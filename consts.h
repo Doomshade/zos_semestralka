@@ -1,0 +1,15 @@
+#ifndef ZOS_SEMESTRALKA_CONSTS_H
+#define ZOS_SEMESTRALKA_CONSTS_H
+#define ERR_UNKNOWN -2
+#define CUSTOM_OUTPUT -1
+#define OK 0
+#define ERR_FILE_NOT_FOUND 1
+#define ERR_PATH_NOT_FOUND 2
+#define ERR_EXIST 3
+#define ERR_NOT_EMPTY 4
+#define ERR_CANNOT_CREATE_FILE 5
+
+#define CMD_NOT_FOUND 0x80
+#define INVALID_ARG_AMOUNT 0x81
+
+#endif

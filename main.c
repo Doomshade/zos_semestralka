@@ -2,6 +2,8 @@
 #include <argp.h>
 #include <string.h>
 #include "cmd_handler.h"
+#include "fs.h"
+#include "util.h"
 
 const char* argp_program_version = "ZOS Semestralka ";
 const char* argp_program_bug_address = "<jsmahy@students.zcu.cz>";
@@ -49,7 +51,7 @@ static struct argp argp = {options, parse_opt, args_doc, doc};
 int main(int argc, char* argv[]) {
     struct arguments args;
     char buf[BUFSIZ];
-    char cmd[20];
+    char cmd[BUFSIZ];
     char* cmd_args[MAX_ARG_COUNT];
     int arg_idx;
     char* token;
@@ -62,19 +64,28 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    printf("Inode size: %lu\n", sizeof(struct inode));
+    printf("Superblock size: %lu\n", sizeof(struct superblock));
+    printf("char size: %lu\n", sizeof(uint8_t));
     argp_parse(&argp, argc, argv, 0, 0, &args);
-    // argv[1] is the handle name and the rest are the arguments
 
     if (strcmp(args.name, "") == 0) {
+        printf("The file name cannot be empty!\n");
         return 1;
     }
 
+    if ((ret = init_fs(args.name))){
+        printf("Could not load the file system with the given name.\n");
+        return ret;
+    }
+
     while (1) {
+        // get the cmd from stdin
         fgets(buf, BUFSIZ, stdin);
-
         token = strtok(buf, " ");
-        strncpy(cmd, token, 20);
+        strncpy(cmd, token, BUFSIZ);
 
+        // get the arguments from stdin
         arg_idx = 0;
         while ((token = strtok(NULL, " ")) != NULL && arg_idx < MAX_ARG_COUNT) {
             cmd_args[arg_idx] = malloc(sizeof(char) * (strlen(token) + 1));
@@ -82,13 +93,14 @@ int main(int argc, char* argv[]) {
             arg_idx++;
         }
 
-        // get rid of "\n"
-        cmd[strcspn(cmd, "\n")] = 0;
+        // get rid of "\n" from both the cmd and the last argument
+        remove_nl(cmd);
         if (arg_idx - 1 >= 0) {
-            cmd_args[arg_idx - 1][strcspn(cmd_args[arg_idx - 1], "\n")] = 0;
+            remove_nl(cmd_args[arg_idx - 1]);
         }
-        ret = handle_cmd(cmd, arg_idx, cmd_args);
 
+        // handle the command with given args
+        ret = handle_cmd(cmd, arg_idx, cmd_args);
         for (i = 0; i < arg_idx; ++i) {
             free(cmd_args[arg_idx]);
         }
@@ -96,9 +108,15 @@ int main(int argc, char* argv[]) {
         switch (ret) {
             case CMD_NOT_FOUND:
                 printf("Invalid command!\n");
+                print_cmds();
+                break;
+            case FS_NOT_YET_FORMATTED:
+                printf("You must format the disk first!\n");
+                print_cmd("format");
                 break;
             case INVALID_ARG_AMOUNT:
                 printf("Invalid amount of arguments!\n");
+                print_cmd(cmd);
                 break;
             case OK:
                 break;

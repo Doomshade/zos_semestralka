@@ -26,6 +26,19 @@ void print_cmds() {
     }
 }
 
+void print_cmd(char* cmd) {
+    int i;
+    CMD c;
+
+    for (i = 0; i < CMD_COUNT; ++i) {
+        c = cmds[i];
+        if (strcmp(c.cmd_name, cmd) == 0) {
+            printf("%s%s(%d)\t-- %s\n", c.cmd_name, (strlen(c.cmd_name) < 4 ? "\t\t" : "\t"), c.argc, c.help);
+            return;
+        }
+    }
+}
+
 static void register_cmd(handle* h, const char* cmd, int argc, const char* help, int idx) {
 
     CMD c = {h, cmd, argc, help};
@@ -70,6 +83,9 @@ int handle_cmd(char* cmd, int argc, char* argv[]) {
         if (strcmp(cmd, c.cmd_name) == 0) {
             if (c.argc != argc) {
                 return INVALID_ARG_AMOUNT;
+            }
+            if (c.handle != format && !FS->fmt) {
+                return FS_NOT_YET_FORMATTED;
             }
             return c.handle(argv);
         }

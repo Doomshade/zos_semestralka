@@ -11,5 +11,6 @@
 
 #define CMD_NOT_FOUND 0x80
 #define INVALID_ARG_AMOUNT 0x81
+#define FS_NOT_YET_FORMATTED 0x82
 
 #endif

@@ -5,6 +5,8 @@
 
 void print_cmds();
 
+void print_cmd(char* cmd);
+
 void register_handlers();
 
 int handle_cmd(char* cmd, int argc, char* argv[]);

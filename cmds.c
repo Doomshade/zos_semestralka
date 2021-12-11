@@ -9,7 +9,6 @@ int format(char* s[]) {
 int cp(char* s[]) {
     char* s1;
     char* s2;
-
     s1 = s[0];
     s2 = s[1];
 

@@ -13,20 +13,20 @@
 extern struct fs* FS;
 
 struct superblock {
-    char signature[9];              // login autora FS
-    char vol_desc[251];             // volume desc
+    char signature[16];             // the author of this FS
+    uint32_t inode_count;           // the total inode count
+    uint32_t cluster_count;         // the total cluster count
+    uint32_t free_inode_count;      // the free inode count
+    uint32_t free_cluster_count;    // the free cluster count
+    uint64_t disk_size;             // the total size of the disk
+    uint16_t cluster_size;          // the cluster size
+    uint32_t inode_bm_start_addr;   // the inode bitmap addr
+    uint32_t data_bm_start_addr;    // the data bitmap addr
+    uint32_t inode_start_addr;      // the addr of the first inode
+    uint32_t data_start_addr;       // the addr of the first data
 
-    uint32_t inode_count;           //
-    uint32_t cluster_count;          //pocet clusteru
-    uint32_t free_inode_count;
-    uint32_t free_cluster_count;
-    uint32_t disk_size;              //celkova velikost VFS
-    uint8_t cluster_size;           //velikost clusteru
-    uint32_t bitmapi_start_address;  //adresa pocatku bitmapy i-uzlů
-    uint32_t bitmap_start_address;   //adresa pocatku bitmapy datových bloků
-    uint32_t inode_start_address;    //adresa pocatku  i-uzlů
-    uint32_t data_start_address;     //adresa pocatku datovych bloku
-    uint32_t first_ino;              // first non-reserved inode_id
+    uint8_t inode_size;             // the size of an inode
+    uint32_t first_ino;             // first non-reserved inode_id
 };
 
 
@@ -46,20 +46,27 @@ struct entry {
     char item_name[12];
 };
 
+/**
+ * The filesystem. The layout is as follows:
+ * [superblock | data block bitmap | inode bitmap | inode table | data blocks]
+ */
 struct fs {
     struct superblock* sb;
     bool fmt;
     FILE* file;
     char* filename;
     struct entry* curr_dir;
+
+    uint8_t* inode_bitmap;
+    uint8_t* data_bitmap;
 };
 
 /**
- * Initializes the superblock with the given disk size
+ * Formats the disk with the given disk size
  * @param disk_size the disk size
  * @return
  */
-int fs_format(uint32_t disk_size);
+int fs_format(uint64_t disk_size);
 
 /**
  * Loads or initializes the file system from the file with the given name

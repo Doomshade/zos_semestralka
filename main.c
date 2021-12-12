@@ -64,9 +64,11 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+
     printf("Inode size: %lu\n", sizeof(struct inode));
     printf("Superblock size: %lu\n", sizeof(struct superblock));
     printf("char size: %lu\n", sizeof(uint8_t));
+    printf("entry size: %lu\n", sizeof(struct entry));
     argp_parse(&argp, argc, argv, 0, 0, &args);
 
     if (strcmp(args.name, "") == 0) {
@@ -74,7 +76,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if ((ret = init_fs(args.name))){
+    if ((ret = init_fs(args.name))) {
         printf("Could not load the file system with the given name.\n");
         return ret;
     }

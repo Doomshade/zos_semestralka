@@ -18,7 +18,7 @@ struct superblock {
     uint32_t cluster_count;         // the total cluster count
     uint32_t free_inode_count;      // the free inode count
     uint32_t free_cluster_count;    // the free cluster count
-    uint64_t disk_size;             // the total size of the disk
+    uint32_t disk_size;             // the total size of the disk
     uint16_t cluster_size;          // the cluster size
     uint32_t inode_bm_start_addr;   // the inode bitmap addr
     uint32_t data_bm_start_addr;    // the data bitmap addr
@@ -31,12 +31,12 @@ struct superblock {
 
 
 struct inode {
-    uint32_t id;            // inode ID, ID = 0 = get_inode is free
+    uint32_t id;            // inode ID, ID = 0 = create_inode is free
     uint8_t file_type;      // file type (REGULAR_FILE, DIRECTORY)
-    uint8_t references;     // reference count for hardlinks
+    uint8_t hard_links;    // the hard links
     uint32_t file_size;     // file size in bytes
-    uint32_t direct[5];     // 5 hard links
-    uint32_t indirect[2];   // two indirect links
+    uint32_t direct[5];     // 5 direct accesses to clusters
+    uint32_t indirect[2];   // two indirect
     uint32_t padding[6];    // padding to reach 64 bytes
 };
 
@@ -57,16 +57,17 @@ struct fs {
     char* filename;
     struct entry* curr_dir;
 
-    uint8_t* inode_bitmap;
-    uint8_t* data_bitmap;
 };
+
+void test();
+
 
 /**
  * Formats the disk with the given disk size
  * @param disk_size the disk size
  * @return
  */
-int fs_format(uint64_t disk_size);
+int fs_format(uint32_t disk_size);
 
 /**
  * Loads or initializes the file system from the file with the given name

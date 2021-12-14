@@ -1,10 +1,12 @@
 #ifndef ZOS_SEMESTRALKA_UTIL_H
 #define ZOS_SEMESTRALKA_UTIL_H
 
+#define MAX(a, b) (a) > (b) ? (a) : (b)
+#define MIN(a, b) (a) < (b) ? (a) : (b)
 #define VALIDATE(ret) if (ret) return ret;
 #define VALIDATE_MALLOC(data) if (!(data)){ \
-printf("Ran out of memory!\n");                                          \
-return -1;                                          \
+fprintf(stderr, "Ran out of memory!\n");                                          \
+exit(-1);                                          \
 }
 
 /**

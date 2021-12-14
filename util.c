@@ -22,4 +22,5 @@ void debug() {
     printf("%-25s: %u\n", "cluster_count", sb->cluster_count);
     printf("%-25s: %u\n", "free_cluster_count", sb->free_cluster_count);
     printf("%-25s: %u\n", "disk_size", sb->disk_size);
+    printf("%-25s: %u\n", "max filesize", MAX_FILE_SIZE);
 }

@@ -41,7 +41,7 @@ struct superblock {
 
 
 struct inode {
-    uint32_t id;            // inode ID, ID = 0 = create_inode is free
+    uint32_t id;            // inode ID, ID = 0 = inode_create is free
     uint8_t file_type;      // file type (REGULAR_FILE, DIRECTORY)
     uint8_t hard_links;    // the hard links
     uint32_t file_size;     // file size in bytes
@@ -92,7 +92,7 @@ int init_fs(char* filename);
  * @param name the name of the subdirectory
  * @return the subdirectory entry
  */
-struct entry* create_dir(uint32_t parent_dir_inode_id, char name[MAX_FILENAME_LENGTH]);
+struct entry* create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]);
 
 /**
  * Creates an empty file in the directory
@@ -100,6 +100,8 @@ struct entry* create_dir(uint32_t parent_dir_inode_id, char name[MAX_FILENAME_LE
  * @param name the name of the file
  * @return the file entry
  */
-struct entry* create_file(uint32_t dir_inode_id, char name[MAX_FILENAME_LENGTH]);
+struct entry* create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]);
+
+int file_contents(uint32_t inode, uint8_t* arr, uint32_t* size);
 
 #endif //ZOS_SEMESTRALKA_FS_H

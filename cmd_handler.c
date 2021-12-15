@@ -84,7 +84,7 @@ int handle_cmd(char* cmd, int argc, char* argv[]) {
             if (c.argc != argc) {
                 return INVALID_ARG_AMOUNT;
             }
-            if (c.handle != format && !FS->fmt) {
+            if (c.handle != format && c.handle != load && !FS->fmt) {
                 return FS_NOT_YET_FORMATTED;
             }
             return c.handle(argv);

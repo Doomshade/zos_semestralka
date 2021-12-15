@@ -1,9 +1,14 @@
 #include "cmds.h"
 #include "consts.h"
 #include <stdio.h>
+#include "util.h"
 
 int format(char* s[]) {
-    return OK;
+    uint32_t size;
+    size = parse(s[0]);
+    printf("%u\n", size);
+
+    return fs_format(size) == 0 ? OK : ERR_CANNOT_CREATE_FILE;
 }
 
 int cp(char* s[]) {
@@ -55,6 +60,16 @@ int outcp(char* s[]) {
 }
 
 int load(char* s[]) {
+    FILE* f;
+
+    f = fopen(s[0], "r");
+    if (!f) {
+        return ERR_FILE_NOT_FOUND;
+    }
+
+    while (!feof(f)) {
+        parse_cmd(f);
+    }
     return OK;
 }
 

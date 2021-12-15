@@ -130,17 +130,17 @@ static uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* by
 
 /**
  * Writes data to a cluster
- * @param cluster the cluster #
+ * @param cluster the cluster #, if 0 is passed a new cluster will be seeked
  * @param ptr the pointer to the data
  * @param size the size of the data type
  * @param n the amount of data
  * @param offset the offset in cluster
  * @param as_data_cluster whether the cluster should be treated as a data cluster
  * (remaps cluster ID 0 to the first cluster after data_start_addr and flips a bit to 1 in the data bitmap)
- * @return 0 if written successfully, 1 otherwise
+ * @return the cluster ID or 0 if it could not be generated when 0 is passed
  */
-static bool
-write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t n, uint32_t offset, bool as_data_cluster,
+static uint32_t
+write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bool as_data_cluster,
               bool override);
 
 /**
@@ -270,8 +270,8 @@ static bool free_cluster(uint32_t cluster_id) {
     return 0;
 }
 
-static bool
-write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t n, uint32_t offset, bool as_data_cluster,
+static uint32_t
+write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bool as_data_cluster,
               bool override) {
     uint8_t arr[CLUSTER_SIZE];
     unsigned long read;
@@ -295,16 +295,18 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t n, uint32_
 
     if (!override) {
         read = read_cluster(cluster, offset, arr, 0);
-        if (read + size * n > CLUSTER_SIZE) {
-            return 1;
+        if (read + size * 1 > CLUSTER_SIZE) {
+            fprintf(stderr, "Attempted to override data after cluster!\n");
+            exit(1);
         }
-
-        // append the previous data
-        memcpy(arr + read, ptr, size * n);
+        memcpy(arr + read, ptr, size);
+        size += read;
+    } else {
+        memcpy(arr, ptr, size);
     }
     // write the data
     SEEK_CLUSTER(cluster)
-    fwrite(ptr, size, n, FS->file);
+    fwrite(arr, size, 1, FS->file);
     fflush(FS->file);
 
     // mark the cluster ID as used
@@ -312,9 +314,11 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t n, uint32_
         if (set_bit(FS->sb->data_bm_start_addr, cluster_id, true)) {
             FS->sb->free_cluster_count--;
         }
+        // we decremented it before, add it back with + 1
+        cluster_id++;
     }
 
-    return 0;
+    return cluster_id;
 }
 
 static bool init_superblock(uint32_t disk_size, struct superblock** _sb) {
@@ -361,7 +365,7 @@ static bool init_superblock(uint32_t disk_size, struct superblock** _sb) {
 static bool write_fs_header() {
 
     // write the superblock
-    VALIDATE(write_cluster(0, FS->sb, sizeof(struct superblock), 1, 0, false, true))
+    write_cluster(0, FS->sb, sizeof(struct superblock), 0, false, true);
     return 0;
 }
 
@@ -536,9 +540,37 @@ static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool appen
         size -= write_size;
         inode->file_size += write_size;
 
-        write_cluster(cluster, ptr, write_size, 1, offset, true, false);
+        inode->direct[inode->file_size / FS->sb->cluster_size] = write_cluster(cluster, ptr, write_size, offset,
+                                                                               true, false);
     }
     return write_inode_to_disk(inode);
+}
+
+static bool read_indirect(uint32_t cluster, uint8_t* arr, uint32_t* remaining, const uint32_t size, uint8_t rank) {
+    if (!arr || !remaining || *remaining <= 0 || cluster == 0 || rank < 0 || rank > 2) {
+        return false;
+    }
+    if (rank == 0) {
+        uint32_t offset = (size - *remaining) % FS->sb->cluster_size;
+        (*remaining) -= read_cluster(cluster, MIN(*remaining, FS->sb->cluster_size) - offset, (arr + offset), offset);
+        return true;
+    }
+
+    uint32_t i;
+    uint32_t buf[CLUSTER_SIZE / sizeof(uint32_t)];
+
+    read_cluster(cluster, FS->sb->cluster_size, (uint8_t*) buf, 0);
+    for (i = 0; i < FS->sb->cluster_size / sizeof(uint32_t); ++i) {
+        if (!read_indirect(buf[i], arr, remaining, size, rank - 1)) {
+            return true;
+        }
+    }
+    return true;
+}
+
+static bool read_indirects(uint32_t cluster, uint8_t* arr, const uint32_t size, uint8_t rank) {
+    uint32_t remaining = size;
+    return read_indirect(cluster, arr, &remaining, size, rank);
 }
 
 static bool remove_entry(struct inode* dir, char name[MAX_FILENAME_LENGTH]) {
@@ -594,7 +626,7 @@ static struct entry* create_empty_file(uint32_t dir_inode_id, char name[MAX_FILE
     return entry;
 }
 
-static struct entry* __create_dir(uint32_t parent_dir_inode_id, char name[MAX_FILENAME_LENGTH], bool root) {
+static struct entry* create_dir_(uint32_t parent_dir_inode_id, char name[MAX_FILENAME_LENGTH], bool root) {
     struct inode* parent;
     struct inode* dir;
     struct entry* e_self;
@@ -645,7 +677,7 @@ static struct entry* __create_dir(uint32_t parent_dir_inode_id, char name[MAX_FI
 }
 
 struct entry* create_dir(uint32_t parent_dir_inode_id, char name[MAX_FILENAME_LENGTH]) {
-    return __create_dir(parent_dir_inode_id, name, false);
+    return create_dir_(parent_dir_inode_id, name, false);
 }
 
 struct entry* create_file(uint32_t dir_inode_id, char name[MAX_FILENAME_LENGTH]) {
@@ -678,7 +710,6 @@ int init_fs(char* filename) {
     if (fexists(filename)) {
         return load_fs_from_file(filename);
     }
-
     return 0;
 }
 
@@ -694,7 +725,7 @@ int fs_format(uint32_t disk_size) {
     ftruncate(fileno(f), sb->disk_size); // sets the file to the size
     VALIDATE(write_fs_header())
 
-    root = __create_dir(0, "/", true);
+    root = create_dir_(0, "/", true);
     if (!root) {
         return 1;
     }
@@ -715,7 +746,7 @@ void test() {
     fs_format(500 * 1024 * 1024 + 10);
 
     a = 140234005;
-    write_cluster(1, &a, sizeof(uint32_t), 1, 0, true, true);
+    write_cluster(0, &a, sizeof(uint32_t), 0, true, true);
 
     for (i = 0; i < 10; ++i) {
         entry = create_file(FS->root->inode_id, "test");
@@ -723,6 +754,9 @@ void test() {
     }
 
     inode = read_inode_from_disk(5);
+    inode->direct[0] = write_cluster(0, &a, sizeof(a), 0, true, true);
+    read_indirects(inode->direct[0], arr, sizeof(uint32_t), 0);
+    printf("YAY\n");
 }
 
 #pragma clang diagnostic pop

@@ -46,7 +46,7 @@ struct inode {
     uint8_t hard_links;    // the hard links
     uint32_t file_size;     // file size in bytes
     uint32_t direct[DIRECT_AMOUNT];     // 5 direct accesses to clusters
-    uint32_t indirect[INDIRECT_AMOUNT];   // two indirect
+    uint32_t indirect[INDIRECT_AMOUNT];   // two indirect - one 1st rank and one 2nd rank
     uint32_t padding[6];    // padding to reach 64 bytes
 };
 

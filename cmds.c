@@ -33,6 +33,7 @@ int mkdir(char* a[]) {
     } else {
         curr_dir = FS->curr_dir;
     }
+
     return OK;
 }
 

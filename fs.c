@@ -203,7 +203,7 @@ static struct inode* inode_create() {
         fprintf(stderr, "Created an inode with an ID that already exists!\n");
         return 0;
     }
-    if (inode_write(inode)) {
+    if (!inode_write(inode)) {
         fprintf(stderr, "Could not write an inode with ID %u to the disk!\n", inode->id);
         return 0;
     }
@@ -212,7 +212,8 @@ static struct inode* inode_create() {
 
 static struct inode* inode_read(uint32_t inode_id) {
     struct inode* inode;
-    if (inode_id > FS->sb->inode_count || !is_set_bit(FS->sb->inode_bm_start_addr, inode_id - 1)) {
+    if (inode_id == FREE_INODE || inode_id > FS->sb->inode_count ||
+        !is_set_bit(FS->sb->inode_bm_start_addr, inode_id - 1)) {
         fprintf(stderr, "No inode with id %u exists!\n", inode_id);
         return NULL;
     }
@@ -228,14 +229,14 @@ static struct inode* inode_read(uint32_t inode_id) {
 
 static bool inode_write(struct inode* inode) {
     if (!inode) {
-        return 1;
+        return false;
     }
 
     SEEK_INODE(inode->id)
     fwrite(inode, FS->sb->inode_size, 1, FS->file);
     fflush(FS->file);
 
-    return 0;
+    return true;
 }
 
 static uint32_t get_dir_entries(struct inode* dir, struct entry** _entries) {
@@ -245,6 +246,10 @@ static uint32_t get_dir_entries(struct inode* dir, struct entry** _entries) {
     uint32_t max_read;
     uint8_t* read;
     uint32_t index;
+
+    if (!dir) {
+        return 0;
+    }
 
     remaining_bytes = dir->file_size;
     entries = malloc(dir->file_size);
@@ -261,6 +266,7 @@ static uint32_t get_dir_entries(struct inode* dir, struct entry** _entries) {
             }
         }
     }
+    free(read);
     *_entries = entries;
     return dir->file_size / sizeof(struct entry);
 }
@@ -270,6 +276,9 @@ static bool dir_has_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH
     uint32_t count;
     uint32_t i;
 
+    if (!dir) {
+        return false;
+    }
     count = get_dir_entries(dir, &entries);
     for (i = 0; i < count; ++i) {
         if (entries[i].inode_id == FREE_INODE) {
@@ -311,6 +320,9 @@ static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool appen
     uint8_t arr[CLUSTER_SIZE];
     uint32_t indirect_cluster;
 
+    if (!inode || !ptr) {
+        return false;
+    }
     if (inode->file_size + size > MAX_FILE_SIZE) {
         fprintf(stderr, "The inode %u (%u MiB) is too large to save! (max %u MiB)\n", inode->id,
                 inode->file_size + size, MAX_FILE_SIZE);
@@ -381,6 +393,9 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
     uint32_t amount;
     uint8_t* zeroes;
 
+    if (!dir) {
+        return false;
+    }
     if (strcmp(name, ".") == 0 ||
         strcmp(name, "..") == 0 ||
         strcmp(name, "/") == 0) {
@@ -420,9 +435,7 @@ static bool add_entry(struct inode* dir, struct entry entry) {
     if (inode_read(entry.inode_id)->file_type == FILE_TYPE_DIRECTORY) {
         dir->hard_links++;
     }
-    write_data(dir, &entry, sizeof(struct entry), true);
-    //free(entry);
-    return true;
+    return write_data(dir, &entry, sizeof(struct entry), true);
 }
 
 static struct inode*
@@ -430,6 +443,9 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], u
     struct inode* inode;
     struct inode* dir;
 
+    if (dir_inode_id == FREE_INODE) {
+        return NULL;
+    }
     dir = inode_read(dir_inode_id);
     if (!dir) {
         return NULL;
@@ -448,7 +464,7 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], u
 struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAME_LENGTH], bool root) {
     struct inode* dir;
 
-    if (root) {
+    if (root && !parent) {
         if (FS->root != FREE_INODE) {
             fprintf(stderr, "Attempted to create a root directory when one already exists!\n");
             return NULL;
@@ -460,7 +476,7 @@ struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAM
             fprintf(stderr, "Invalid name '%s' - it cannot contain '/'!\n", name);
             return NULL;
         }
-        if (parent == NULL || !CAN_ADD_ENTRY_TO_DIR(parent, name)) {
+        if (!parent || !CAN_ADD_ENTRY_TO_DIR(parent, name)) {
             return NULL;
         }
         dir = inode_create();
@@ -549,7 +565,7 @@ uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
     struct entry* entries;
     uint32_t i;
     for (i = 0; i < get_dir_entries(inode_read(dir), &entries); ++i) {
-        if(strcmp(entries[i].item_name, name) == 0){
+        if (strcmp(entries[i].item_name, name) == 0) {
             return entries[i].inode_id;
         }
     }

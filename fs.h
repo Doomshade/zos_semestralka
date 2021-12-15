@@ -52,7 +52,7 @@ struct inode {
 
 
 struct entry {
-    uint32_t inode_id;
+    const uint32_t inode_id;
     char item_name[MAX_FILENAME_LENGTH];
 };
 
@@ -65,8 +65,8 @@ struct fs {
     bool fmt;
     FILE* file;
     char* filename;
-    struct entry* curr_dir;
-    struct entry* root;
+    uint32_t root;
+    uint32_t curr_dir;
 };
 
 void test();
@@ -90,17 +90,32 @@ int init_fs(char* filename);
  * Creates a subdirectory in the parent directory
  * @param parent_dir_inode_id the parent's inode ID
  * @param name the name of the subdirectory
- * @return the subdirectory entry
+ * @return the subdirectory inode id
  */
-struct entry* create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]);
+uint32_t create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]);
 
 /**
  * Creates an empty file in the directory
  * @param dir_inode_id the directory inode ID
  * @param name the name of the file
- * @return the file entry
+ * @return the file inode id
  */
-struct entry* create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]);
+uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]);
+
+/**
+ *
+ * @param dir the directory
+ * @param name the file/dir name
+ * @return the inode ID
+ */
+uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
+
+/**
+ *
+ * @param inode_id the inode ID
+ * @return the state of an inode on disk
+ */
+struct inode* inode_get(uint32_t inode_id);
 
 int file_contents(uint32_t inode, uint8_t* arr, uint32_t* size);
 

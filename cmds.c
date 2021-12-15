@@ -1,6 +1,7 @@
 #include "cmds.h"
 #include "consts.h"
 #include <stdio.h>
+#include <string.h>
 #include "util.h"
 
 int format(char* s[]) {
@@ -24,6 +25,14 @@ int rm(char* s[]) {
 }
 
 int mkdir(char* a[]) {
+    uint32_t curr_dir;
+    const char* aa = a[0];
+
+    if (strncmp(aa, "/", 1) == 0) {
+        curr_dir = FS->root;
+    } else {
+        curr_dir = FS->curr_dir;
+    }
     return OK;
 }
 

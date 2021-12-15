@@ -2,7 +2,6 @@
 #include "util.h"
 #include "io.h"
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <string.h>
 #include <stdint-gcc.h>
 #include <unistd.h>
@@ -43,6 +42,16 @@ fread((arr), sizeof(uint8_t), (end_arr) - (start_addr), FS->file);
 
 #define malloc0(size) calloc(1, (size))
 */
+
+/**
+ * Creates a directory
+ * @param parent
+ * @param name
+ * @param root
+ * @param inode
+ * @return
+ */
+static struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAME_LENGTH], bool root);
 
 /**
  * Writes an inode to the disk
@@ -229,17 +238,16 @@ static bool inode_write(struct inode* inode) {
     return 0;
 }
 
-static uint32_t get_dir_entries(struct inode* dir, struct entry*** _entries) {
-    struct entry** entries;
+static uint32_t get_dir_entries(struct inode* dir, struct entry** _entries) {
+    struct entry* entries;
     uint32_t remaining_bytes;
     uint32_t i, j;
     uint32_t max_read;
     uint8_t* read;
     uint32_t index;
-    struct entry* entry;
 
     remaining_bytes = dir->file_size;
-    entries = malloc(sizeof(struct entry*) * dir->file_size / sizeof(struct entry));
+    entries = malloc(dir->file_size);
     read = malloc(remaining_bytes * sizeof(uint8_t));
 
     index = 0;
@@ -248,9 +256,7 @@ static uint32_t get_dir_entries(struct inode* dir, struct entry*** _entries) {
             max_read = MIN(FS->sb->cluster_size, remaining_bytes);
             read_cluster(dir->direct[i], max_read, read, 0);
             for (j = 0; j < max_read / sizeof(struct entry); ++j) {
-                entry = malloc(sizeof(struct entry));
-                memcpy(entry, read + j * sizeof(struct entry), sizeof(struct entry));
-                entries[index++] = entry;
+                memcpy(&entries[index++], read + j * sizeof(struct entry), sizeof(struct entry));
                 remaining_bytes -= sizeof(struct entry);
             }
         }
@@ -260,17 +266,17 @@ static uint32_t get_dir_entries(struct inode* dir, struct entry*** _entries) {
 }
 
 static bool dir_has_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
-    struct entry** entries;
+    struct entry* entries;
     uint32_t count;
     uint32_t i;
 
     count = get_dir_entries(dir, &entries);
     for (i = 0; i < count; ++i) {
-        if (entries[i] == NULL) {
+        if (entries[i].inode_id == FREE_INODE) {
             fprintf(stderr, "A null entry encountered, RIP\n");
             continue;
         }
-        if (strncmp(name, entries[i]->item_name, MAX_FILENAME_LENGTH) == 0) {
+        if (strncmp(name, entries[i].item_name, MAX_FILENAME_LENGTH) == 0) {
             free(entries);
             return true;
         }
@@ -370,7 +376,7 @@ static bool read_indirects(uint32_t cluster, uint8_t* arr, const uint32_t size, 
 }
 
 static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
-    struct entry** entries;
+    struct entry* entries;
     uint32_t i;
     uint32_t amount;
     uint8_t* zeroes;
@@ -393,10 +399,10 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
     memset(zeroes, 0, sizeof(struct entry));
 
     for (i = 0; i < amount; ++i) {
-        if (strncmp(entries[i]->item_name, name, MAX_FILENAME_LENGTH) == 0) {
+        if (strncmp(entries[i].item_name, name, MAX_FILENAME_LENGTH) == 0) {
             // found the entry, remove it and substitute it with the last entry in the list
             // TODO check what cluster it actually is
-            write_cluster(dir->direct[0], entries[amount - 1], sizeof(struct entry),
+            write_cluster(dir->direct[0], &entries[amount - 1], sizeof(struct entry),
                           i * sizeof(struct entry), true, false);
             write_cluster(dir->direct[0], zeroes, sizeof(struct entry),
                           dir->file_size -= sizeof(struct entry), true, false);
@@ -406,24 +412,23 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
     return false;
 }
 
-static bool add_entry(struct inode* dir, struct entry* entry) {
-    if (!dir || entry == NULL || !(CAN_ADD_ENTRY_TO_DIR(dir, entry->item_name))) {
+static bool add_entry(struct inode* dir, struct entry entry) {
+    if (!dir || !(CAN_ADD_ENTRY_TO_DIR(dir, entry.item_name))) {
         return false;
     }
 
-    if (inode_read(entry->inode_id)->file_type == FILE_TYPE_DIRECTORY) {
+    if (inode_read(entry.inode_id)->file_type == FILE_TYPE_DIRECTORY) {
         dir->hard_links++;
     }
-    write_data(dir, entry, sizeof(struct entry), true);
+    write_data(dir, &entry, sizeof(struct entry), true);
     //free(entry);
     return true;
 }
 
-static struct entry*
-create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], struct inode** _inode) {
+static struct inode*
+create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], uint8_t file_type) {
     struct inode* inode;
     struct inode* dir;
-    struct entry* entry;
 
     dir = inode_read(dir_inode_id);
     if (!dir) {
@@ -433,25 +438,18 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], s
         fprintf(stderr, "Could not add an entry to a dir %u\n", dir_inode_id);
         return NULL;
     }
-    entry = malloc(sizeof(struct entry));
-    VALIDATE_MALLOC(entry)
-    strncpy(entry->item_name, name, MAX_FILENAME_LENGTH);
 
     inode = inode_create();
-    entry->inode_id = inode->id;
+    inode->file_type = file_type;
     inode_write(inode);
-    *_inode = inode;
-    return entry;
+    return inode;
 }
 
-static struct entry* create_dir_(struct inode* parent, const char name[MAX_FILENAME_LENGTH], bool root) {
+struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAME_LENGTH], bool root) {
     struct inode* dir;
-    struct entry* e_self;
-    struct entry* e_parent;
-    struct entry* entry;
 
     if (root) {
-        if (FS->root != NULL) {
+        if (FS->root != FREE_INODE) {
             fprintf(stderr, "Attempted to create a root directory when one already exists!\n");
             return NULL;
         }
@@ -468,41 +466,35 @@ static struct entry* create_dir_(struct inode* parent, const char name[MAX_FILEN
         dir = inode_create();
     }
 
-    e_self = malloc(sizeof(struct entry));
-    entry = malloc(sizeof(struct entry));
-    e_parent = malloc(sizeof(struct entry));
-
     dir->file_type = FILE_TYPE_DIRECTORY;
 
-    entry->inode_id = dir->id;
-    strncpy(entry->item_name, name, MAX_FILENAME_LENGTH);
-    e_self->inode_id = dir->id;
-    strcpy(e_self->item_name, ".");
-    e_parent->inode_id = parent->id;
-    strcpy(e_parent->item_name, "..");
+    struct entry this = {dir->id};
+    strncpy(this.item_name, name, MAX_FILENAME_LENGTH);
+
+    struct entry e_self = {dir->id, "."};
+    struct entry e_parent = {parent->id, ".."};
 
     if (!add_entry(dir, e_self) || !add_entry(dir, e_parent)) {
+        //free_inode(dir);
         return NULL;
     }
     // don't add an entry to the parent if this is the root
-    if (!root && !add_entry(parent, entry)) {
+    if (!root && !add_entry(parent, this)) {
+        //free_inode(dir);
         return NULL;
     }
 
-    return entry;
+    // TODO
+    //inode_write(dir);
+    return dir;
 }
 
-struct entry* create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
-    return create_dir_(inode_read(parent_dir_inode_id), name, false);
+uint32_t create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
+    return create_empty_dir(inode_read(parent_dir_inode_id), name, false)->id;
 }
 
-struct entry* create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
-    struct inode* inode;
-    struct entry* entry;
-
-    entry = create_empty_file(dir_inode_id, name, &inode);
-    inode->file_type = FILE_TYPE_REGULAR_FILE;
-    return entry;
+uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
+    return create_empty_file(dir_inode_id, name, FILE_TYPE_REGULAR_FILE)->id;
 }
 
 int init_fs(char* filename) {
@@ -517,8 +509,8 @@ int init_fs(char* filename) {
 
     fs->fmt = false;
     fs->filename = filename;
-    fs->root = NULL;
-    fs->curr_dir = NULL;
+    fs->root = FREE_INODE;
+    fs->curr_dir = FREE_INODE;
     FS = fs;
 
     // if the file exists, attempt to load the FS from the file
@@ -531,44 +523,59 @@ int init_fs(char* filename) {
 int fs_format(uint32_t disk_size) {
     FILE* f;
     struct superblock* sb;
-    struct entry* root;
+    struct inode* root;
 
     FS->file = NULL;
-    FS->root = NULL;
-    FS->curr_dir = NULL;
+    FS->root = FREE_INODE;
+    FS->curr_dir = FREE_INODE;
     VALIDATE(!init_superblock(disk_size, &sb))
     FS->sb = sb;
     VALIDATE(load_file(f = fopen(FS->filename, "wb+")))
     ftruncate(fileno(f), sb->disk_size); // sets the file to the size
     VALIDATE(write_fs_header())
 
-    root = create_dir_(NULL, "/", true);
-    if (!root) {
-        return 1;
-    }
+    root = create_empty_dir(NULL, "/", true);
 
-    FS->root = root;
-    FS->curr_dir = root;
+    FS->root = root->id;
+    FS->curr_dir = root->id;
     return 0;
 }
+
+struct inode* inode_get(uint32_t inode_id) {
+    return inode_read(inode_id);
+}
+
+uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
+    struct entry* entries;
+    uint32_t i;
+    for (i = 0; i < get_dir_entries(inode_read(dir), &entries); ++i) {
+        if(strcmp(entries[i].item_name, name) == 0){
+            return entries[i].inode_id;
+        }
+    }
+    return FREE_INODE;
+}
+
 
 void test() {
     int i;
     uint64_t a;
-    const char* entry_names[] = {"Kuba", "je", "god"};
+    const char* kuba[] = {"Kuba", "je", "god"};
     struct inode* root;
-    struct entry* entry;
+    uint32_t inode_id;
 
     fs_format(500 * 1024 * 1024 + 10);
 
     a = 0xEFCDAB8967452301;
     write_cluster(0, &a, sizeof(a), 0, true, true);
 
-    root = inode_read(FS->root->inode_id);
-    entry = create_file(FS->root->inode_id, "ROFL");
+    root = inode_read(FS->root);
+    inode_id = create_file(FS->root, "ROFL");
     for (i = 0; i < 3; ++i) {
-        strncpy(entry->item_name, entry_names[i], MAX_FILENAME_LENGTH);
+        struct entry entry = {inode_id};
+        strncpy(entry.item_name, kuba[i], MAX_FILENAME_LENGTH);
         add_entry(root, entry);
+
     }
 }
 

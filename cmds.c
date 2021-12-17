@@ -95,7 +95,11 @@ int pwd(char* empt[]) {
     uint32_t curr_dir;
 
     // coding this was pain, please don't ask me how I did this
-    // it was nothing but bunch of debugging
+    // it was nothing but a bunch of debugging
+    if (FS->curr_dir == FS->root) {
+        printf("/\n");
+        return CUSTOM_OUTPUT;
+    }
     curr_dir = FS->curr_dir;
     prev = malloc(sizeof(node));
     VALIDATE_MALLOC(prev)
@@ -107,8 +111,10 @@ int pwd(char* empt[]) {
         n = malloc(sizeof(node));
         VALIDATE_MALLOC(n)
 
-        get_dir_entry(parent.inode_id, &entry, dir.inode_id);
-
+        if (!get_dir_entry(parent.inode_id, &entry, dir.inode_id)) {
+            fprintf(stderr, "No entry %s found in dir %s! This should not happen!\n", dir.item_name, parent.item_name);
+            return ERR_UNKNOWN;
+        }
         n->entry = entry;
         n->next = prev;
         prev = n;

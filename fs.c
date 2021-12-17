@@ -235,6 +235,38 @@ static bool inode_write(struct inode* inode) {
     return true;
 }
 
+static int compare_entries(const void* aa, const void* bb) {
+    struct entry* a = (struct entry*) aa;
+    struct entry* b = (struct entry*) bb;
+    struct inode* ia = inode_get(a->inode_id);
+    struct inode* ib = inode_get(b->inode_id);
+
+    if (!ia || !ib) {
+        return 0;
+    }
+
+    if (strcmp(a->item_name, CURR_DIR) == 0) {
+        return -1;
+    }
+    if (strcmp(b->item_name, CURR_DIR) == 0) {
+        return 1;
+    }
+
+    if (strcmp(a->item_name, PREV_DIR) == 0) {
+        return -1;
+    }
+
+    if (strcmp(b->item_name, PREV_DIR) == 0) {
+        return 1;
+    }
+
+    // sort by directory
+    if (ia->file_type ^ ib->file_type) {
+        return ia->file_type == FILE_TYPE_DIRECTORY ? -1 : 1;
+    }
+    return strcmp(a->item_name, b->item_name);
+}
+
 static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entries) {
     struct entry* entries;
     uint32_t remaining_bytes;
@@ -263,6 +295,8 @@ static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entrie
         }
     }
     free(read);
+
+    qsort(entries, dir->file_size / sizeof(struct entry), sizeof(struct entry), compare_entries);
     *_entries = entries;
     return dir->file_size / sizeof(struct entry);
 }

@@ -26,17 +26,17 @@ int rm(char* s[]) {
 }
 
 int mkdir(char* a[]) {
-    uint32_t dir;
-    uint32_t parent;
+    struct entry dir;
+    struct entry parent;
 
-    parse_dir(&a[0], &parent, &dir);
-    if (parent == FREE_INODE) {
+    parse_dir(a[0], &parent, &dir);
+    if (parent.inode_id == FREE_INODE) {
         return ERR_PATH_NOT_FOUND;
     }
-    if (dir != FREE_INODE) {
+    if (dir.inode_id != FREE_INODE) {
         return ERR_EXIST;
     }
-    return create_dir(parent, a[0]) != FREE_INODE ? OK : ERR_UNKNOWN;
+    return create_dir(parent.inode_id, dir.item_name) != FREE_INODE ? OK : ERR_UNKNOWN;
 }
 
 int rmdir(char* a[]) {
@@ -44,18 +44,18 @@ int rmdir(char* a[]) {
 }
 
 int ls(char* a[]) {
-    uint32_t dir;
-    uint32_t parent;
+    struct entry dir;
+    struct entry parent;
     struct entry* entries;
     struct inode* inode;
     uint32_t amount;
     uint32_t i;
 
-    parse_dir(&a[0], &parent, &dir);
-    if (dir == FREE_INODE) {
+    parse_dir(a[0], &parent, &dir);
+    if (dir.inode_id == FREE_INODE) {
         return ERR_PATH_NOT_FOUND;
     }
-    amount = get_dir_entries(dir, &entries);
+    amount = get_dir_entries(dir.inode_id, &entries);
     for (i = 0; i < amount; ++i) {
         inode = inode_get(entries[i].inode_id);
         printf("%s%s\n", inode->file_type == FILE_TYPE_REGULAR_FILE ? "-" : "+", entries[i].item_name);
@@ -69,34 +69,54 @@ int cat(char* s[]) {
 }
 
 int cd(char* a[]) {
-    uint32_t dir;
-    uint32_t parent;
+    struct entry dir;
+    struct entry parent;
 
-    parse_dir(&a[0], &parent, &dir);
+    parse_dir(a[0], &parent, &dir);
 
-    if (dir == FREE_INODE){
+    if (dir.inode_id == FREE_INODE) {
         return ERR_PATH_NOT_FOUND;
     }
-    FS->curr_dir = dir;
+    FS->curr_dir = dir.inode_id;
     return OK;
 }
 
+typedef struct NODE {
+    struct NODE* next;
+    struct entry entry;
+} node;
+
 int pwd(char* empt[]) {
-    const char CURR_DIR[] = ".";
-    char** stack;
-    struct inode* inode;
-    struct entry* entries;
-    uint32_t parent;
-    uint32_t dir;
+    node* n;
+    node* prev;
+    struct entry parent;
+    struct entry dir;
+    struct entry entry;
 
-    stack = malloc(sizeof(char*));
-    VALIDATE_MALLOC(stack)
-    get_dir_entries(FS->curr_dir, &entries);
+    prev = malloc(sizeof(node));
+    VALIDATE_MALLOC(prev)
 
+    *prev = (node) {.next = NULL, .entry = (struct entry) {.inode_id = FS->curr_dir, .item_name = CURR_DIR}};
+    dir.inode_id = FREE_INODE;
 
+    while (dir.inode_id != FS->root) {
+        parse_dir(PREV_DIR, &parent, &dir);
+        n = malloc(sizeof(node));
+        VALIDATE_MALLOC(n)
 
-    free(stack);
+        get_dir_entry(dir.inode_id, &entry, prev->entry.inode_id);
 
+        n->entry = dir;
+        n->next = prev;
+        prev = n;
+    }
+
+    printf("/");
+    while (n->entry.inode_id != FS->curr_dir) {
+        printf("%s/", n->entry.item_name);
+        n = n->next;
+    }
+    printf("\n");
     return CUSTOM_OUTPUT;
 }
 

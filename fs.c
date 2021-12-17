@@ -99,10 +99,6 @@ static bool write_fs_header();
 
 static bool free_inode(struct inode* inode);
 
-static struct inode* inode_read(uint32_t inode_id);
-
-static bool inode_write(struct inode* inode);
-
 /**
  * The file system global variable definition.
  * [superblock | data bitmap | inode bitmap | inodes | data]
@@ -396,9 +392,9 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
     if (!dir) {
         return false;
     }
-    if (strcmp(name, ".") == 0 ||
-        strcmp(name, "..") == 0 ||
-        strcmp(name, "/") == 0) {
+    if (strcmp(name, CURR_DIR) == 0 ||
+        strcmp(name, PREV_DIR) == 0 ||
+        strcmp(name, ROOT_DIR) == 0) {
         fprintf(stderr, "Cannot delete the '%s' entry!\n", name);
         return false;
     }
@@ -487,8 +483,8 @@ struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAM
     struct entry this = {dir->id};
     strncpy(this.item_name, name, MAX_FILENAME_LENGTH);
 
-    struct entry e_self = {dir->id, "."};
-    struct entry e_parent = {parent->id, ".."};
+    struct entry e_self = {dir->id, CURR_DIR};
+    struct entry e_parent = {parent->id, PREV_DIR};
 
     if (!add_entry(dir, e_self) || !add_entry(dir, e_parent)) {
         //free_inode(dir);
@@ -516,7 +512,6 @@ uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]
 
 int init_fs(char* filename) {
     struct fs* fs;
-
     if (FS) {
         fprintf(stderr, "Already initialized the file system!\n");
         return 1;
@@ -551,10 +546,10 @@ int fs_format(uint32_t disk_size) {
     ftruncate(fileno(f), sb->disk_size); // sets the file to the size
     VALIDATE(write_fs_header())
 
-    root = create_empty_dir(NULL, "/", true);
+    root = create_empty_dir(NULL, ROOT_DIR, true);
 
     FS->root = root->id;
-    FS->curr_dir = root->id;
+    FS->curr_dir = FS->root;
     FS->fmt = true;
     return 0;
 }
@@ -580,6 +575,19 @@ bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
 
 uint32_t get_dir_entries(uint32_t dir, struct entry** _entries) {
     return get_dir_entries_(inode_read(dir), _entries);
+}
+
+bool get_dir_entry(uint32_t dir, struct entry* entry, uint32_t entry_id) {
+    struct entry* entries;
+    uint32_t i;
+
+    for (i = 0; i < get_dir_entries(dir, &entries); ++i) {
+        if (entries[i].inode_id == entry_id) {
+            *entry = entries[i];
+            return true;
+        }
+    }
+    return false;
 }
 
 void test() {

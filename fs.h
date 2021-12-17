@@ -16,6 +16,10 @@
 #define DIRECT_AMOUNT 5
 #define INDIRECT_AMOUNT 2
 #define MAX_FILE_SIZE ((DIRECT_AMOUNT * CLUSTER_SIZE) + INDIRECT_AMOUNT * (CLUSTER_SIZE/4) * CLUSTER_SIZE)
+#define CURR_DIR "."
+#define PREV_DIR ".."
+#define ROOT_DIR "/"
+#define DIR_SEPARATOR "/"
 
 extern struct fs* FS;
 
@@ -49,7 +53,7 @@ struct inode {
 
 
 struct entry {
-    const uint32_t inode_id;
+    uint32_t inode_id;
     char item_name[MAX_FILENAME_LENGTH];
 };
 
@@ -130,6 +134,14 @@ bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
  */
 uint32_t get_dir_entries(uint32_t dir, struct entry** _entries);
 
+/**
+ * Retrieves a directory entry based on the name
+ * @param dir the dir inode
+ * @param entry the entry pointer
+ * @param entry_id the entry inode id
+ * @return true if found, false otherwise
+ */
+bool get_dir_entry(uint32_t dir, struct entry* entry, uint32_t entry_id);
 int file_contents(uint32_t inode, uint8_t* arr, uint32_t* size);
 
 #endif //ZOS_SEMESTRALKA_FS_H

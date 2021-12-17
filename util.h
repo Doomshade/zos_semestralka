@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include "fs.h"
 
 #define MAX(a, b) (a) > (b) ? (a) : (b)
 #define MIN(a, b) (a) < (b) ? (a) : (b)
@@ -33,10 +34,13 @@ uint32_t parse(const char* s);
 
 /**
  * Parses the dir
- * @param dir the ptr to dir name
+ * @param dir the full dir name
+ * @param out_dir the dir name ptr
+ * @param prev_dir the ptr to prev_dir
+ * @param cur_dir the ptr to cur_dir
  * @return the dir inode ID
  */
-void parse_dir(const char** dir, uint32_t* parent, uint32_t* child);
+void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir);
 
 void parse_cmd(FILE* stream);
 

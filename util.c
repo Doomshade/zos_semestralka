@@ -123,42 +123,43 @@ void parse_cmd(FILE* stream) {
     }
 }
 
-// TODO add uint32_t* parent and ret curr_dir
-void parse_dir(const char** dir, uint32_t* parent, uint32_t* child) {
-    uint32_t curr_dir;
+void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir) {
+    struct entry curr_dir;
+    const struct entry EMPTY = {.inode_id = FREE_INODE, .item_name = ""};
     char* cpy;
     char* tok;
 
-    cpy = malloc(sizeof(char) * (strlen(*dir) + 1));
-    strcpy(cpy, *dir);
+    cpy = malloc(sizeof(char) * (strlen(dir) + 1));
+    strcpy(cpy, dir);
 
-    if (strncmp(cpy, "/", 1) == 0) {
-        curr_dir = FS->root;
+    if (strncmp(cpy, ROOT_DIR, 1) == 0) {
+        curr_dir = (struct entry) {.inode_id= FS->root, .item_name = ROOT_DIR};
         if (strlen(cpy) == 1) {
-            *child = curr_dir;
-            *parent = curr_dir;
+            *cur_dir = (struct entry) curr_dir;
+            *prev_dir = (struct entry) curr_dir;
             return;
         }
         cpy++;
     } else {
-        curr_dir = FS->curr_dir;
+        curr_dir = (struct entry) {.inode_id = FS->curr_dir, .item_name = CURR_DIR};
     }
 
     // TODO must have diff results for ls and mkdir!
-    tok = strtok(cpy, "/");
+    tok = strtok(cpy, DIR_SEPARATOR);
 
     while (tok != NULL) {
-        *parent = curr_dir;
-        *child = (curr_dir = inode_from_name(curr_dir, tok));
-
-        *dir = tok;
-        tok = strtok(NULL, "/");
+        *prev_dir = (struct entry) curr_dir;
+        curr_dir = (struct entry) {.inode_id = inode_from_name(curr_dir.inode_id, tok)};
+        strncpy(curr_dir.item_name, tok, MAX_FILENAME_LENGTH);
+        *cur_dir = (struct entry) curr_dir;
+        tok = strtok(NULL, DIR_SEPARATOR);
         // we haven't gotten to the end of the directory search,
         // this means the directory does not exist
-        if (tok != NULL && curr_dir == FREE_INODE) {
-            *parent = FREE_INODE;
-            *child = FREE_INODE;
+        if (tok != NULL && curr_dir.inode_id == FREE_INODE) {
+            *prev_dir = (struct entry) EMPTY;
+            *cur_dir = (struct entry) EMPTY;
             return;
         }
     }
 }
+

@@ -92,31 +92,35 @@ int pwd(char* empt[]) {
     struct entry parent;
     struct entry dir;
     struct entry entry;
+    uint32_t curr_dir;
 
+    // coding this was pain, please don't ask me how I did this
+    // it was nothing but bunch of debugging
+    curr_dir = FS->curr_dir;
     prev = malloc(sizeof(node));
     VALIDATE_MALLOC(prev)
 
     *prev = (node) {.next = NULL, .entry = (struct entry) {.inode_id = FS->curr_dir, .item_name = CURR_DIR}};
-    dir.inode_id = FREE_INODE;
-
-    while (dir.inode_id != FS->root) {
-        parse_dir(PREV_DIR, &parent, &dir);
+    dir.inode_id = 0;
+    while (parent.inode_id != FS->root) {
+        parse_dir(PREV_DIR, &dir, &parent);
         n = malloc(sizeof(node));
         VALIDATE_MALLOC(n)
 
-        get_dir_entry(dir.inode_id, &entry, prev->entry.inode_id);
+        get_dir_entry(parent.inode_id, &entry, dir.inode_id);
 
-        n->entry = dir;
+        n->entry = entry;
         n->next = prev;
         prev = n;
+        FS->curr_dir = parent.inode_id;
     }
 
-    printf("/");
-    while (n->entry.inode_id != FS->curr_dir) {
-        printf("%s/", n->entry.item_name);
-        n = n->next;
+    while (strcmp(prev->entry.item_name, CURR_DIR) != 0) {
+        printf("/%s", prev->entry.item_name);
+        prev = prev->next;
     }
     printf("\n");
+    FS->curr_dir = curr_dir;
     return CUSTOM_OUTPUT;
 }
 

@@ -78,6 +78,12 @@ int handle_cmd(char* cmd, int argc, char* argv[]) {
         return CMD_NOT_FOUND;
     }
 
+    for (i = 0; i < argc; ++i) {
+        if (strcmp(argv[i], "") == 0) {
+            return INVALID_ARG_AMOUNT;
+        }
+    }
+
     for (i = 0; i < CMD_COUNT; ++i) {
         CMD c = cmds[i];
         if (strcmp(cmd, c.cmd_name) == 0) {

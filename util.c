@@ -1,8 +1,8 @@
 #include "util.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include "fs.h"
-#include "consts.h"
 #include "cmd_handler.h"
 
 void remove_nl(char* s) {
@@ -41,7 +41,7 @@ uint32_t mult(char size[2]) {
     return 1;
 }
 
-uint32_t parse(char* s) {
+uint32_t parse(const char* s) {
     char* end;
     uint32_t num;
 
@@ -115,8 +115,50 @@ void parse_cmd(FILE* stream) {
         case ERR_EXIST:
             printf("EXIST (nelze založit, již existuje)\n");
             break;
+        case CUSTOM_OUTPUT:
+            break;
         default:
             printf("An unknown error occurred\n");
             break;
+    }
+}
+
+// TODO add uint32_t* parent and ret curr_dir
+void parse_dir(const char** dir, uint32_t* parent, uint32_t* child) {
+    uint32_t curr_dir;
+    char* cpy;
+    char* tok;
+
+    cpy = malloc(sizeof(char) * (strlen(*dir) + 1));
+    strcpy(cpy, *dir);
+
+    if (strncmp(cpy, "/", 1) == 0) {
+        curr_dir = FS->root;
+        if (strlen(cpy) == 1) {
+            *child = curr_dir;
+            *parent = curr_dir;
+            return;
+        }
+        cpy++;
+    } else {
+        curr_dir = FS->curr_dir;
+    }
+
+    // TODO must have diff results for ls and mkdir!
+    tok = strtok(cpy, "/");
+
+    while (tok != NULL) {
+        *parent = curr_dir;
+        *child = (curr_dir = inode_from_name(curr_dir, tok));
+
+        *dir = tok;
+        tok = strtok(NULL, "/");
+        // we haven't gotten to the end of the directory search,
+        // this means the directory does not exist
+        if (tok != NULL && curr_dir == FREE_INODE) {
+            *parent = FREE_INODE;
+            *child = FREE_INODE;
+            return;
+        }
     }
 }

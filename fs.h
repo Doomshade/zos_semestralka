@@ -6,9 +6,6 @@
 #include <stdio.h>
 
 #define FREE_INODE 0
-#define FREE_CLUSTER 0
-#define IS_FREE_INODE(inode) (inode) == FREE_INODE
-#define IS_FREE_CLUSTER(cluster) (cluster) == FREE_CLUSTER
 
 #define FILE_TYPE_UNKNOWN 0
 #define FILE_TYPE_REGULAR_FILE 1
@@ -116,6 +113,22 @@ uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
  * @return the state of an inode on disk
  */
 struct inode* inode_get(uint32_t inode_id);
+
+/**
+ * Checks whether the directory with the inode has an entry with some name
+ * @param dir the dir inode id
+ * @param name the name
+ * @return true if it has, false otherwise
+ */
+bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
+
+/**
+ * Retrieves the entries in the directory
+ * @param dir the dir inode
+ * @param _entries the entries array pointer
+ * @return the amount of entries
+ */
+uint32_t get_dir_entries(uint32_t dir, struct entry** _entries);
 
 int file_contents(uint32_t inode, uint8_t* arr, uint32_t* size);
 

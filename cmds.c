@@ -1,14 +1,15 @@
 #include "cmds.h"
-#include "consts.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include "util.h"
+#include "cmd_handler.h"
+#include <stdlib.h>
 
 int format(char* s[]) {
     uint32_t size;
     size = parse(s[0]);
     printf("%u\n", size);
-
     return fs_format(size) == 0 ? OK : ERR_CANNOT_CREATE_FILE;
 }
 
@@ -25,16 +26,17 @@ int rm(char* s[]) {
 }
 
 int mkdir(char* a[]) {
-    uint32_t curr_dir;
-    const char* aa = a[0];
+    uint32_t dir;
+    uint32_t parent;
 
-    if (strncmp(aa, "/", 1) == 0) {
-        curr_dir = FS->root;
-    } else {
-        curr_dir = FS->curr_dir;
+    parse_dir(&a[0], &parent, &dir);
+    if (parent == FREE_INODE) {
+        return ERR_PATH_NOT_FOUND;
     }
-
-    return OK;
+    if (dir != FREE_INODE) {
+        return ERR_EXIST;
+    }
+    return create_dir(parent, a[0]) != FREE_INODE ? OK : ERR_UNKNOWN;
 }
 
 int rmdir(char* a[]) {
@@ -42,6 +44,23 @@ int rmdir(char* a[]) {
 }
 
 int ls(char* a[]) {
+    uint32_t dir;
+    uint32_t parent;
+    struct entry* entries;
+    struct inode* inode;
+    uint32_t amount;
+    uint32_t i;
+
+    parse_dir(&a[0], &parent, &dir);
+    if (dir == FREE_INODE) {
+        return ERR_PATH_NOT_FOUND;
+    }
+    amount = get_dir_entries(dir, &entries);
+    for (i = 0; i < amount; ++i) {
+        inode = inode_get(entries[i].inode_id);
+        printf("%s%s\n", inode->file_type == FILE_TYPE_REGULAR_FILE ? "-" : "+", entries[i].item_name);
+    }
+
     return CUSTOM_OUTPUT;
 }
 
@@ -50,10 +69,34 @@ int cat(char* s[]) {
 }
 
 int cd(char* a[]) {
+    uint32_t dir;
+    uint32_t parent;
+
+    parse_dir(&a[0], &parent, &dir);
+
+    if (dir == FREE_INODE){
+        return ERR_PATH_NOT_FOUND;
+    }
+    FS->curr_dir = dir;
     return OK;
 }
 
 int pwd(char* empt[]) {
+    const char CURR_DIR[] = ".";
+    char** stack;
+    struct inode* inode;
+    struct entry* entries;
+    uint32_t parent;
+    uint32_t dir;
+
+    stack = malloc(sizeof(char*));
+    VALIDATE_MALLOC(stack)
+    get_dir_entries(FS->curr_dir, &entries);
+
+
+
+    free(stack);
+
     return CUSTOM_OUTPUT;
 }
 

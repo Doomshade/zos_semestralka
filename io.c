@@ -14,6 +14,7 @@
 #define SEEK_CLUSTER(cluster) fseek(FS->file, (cluster) * FS->sb->cluster_size, SEEK_SET);
 #define TO_DATA_CLUSTER(cluster) (((cluster) - 1) + FS->sb->data_start_addr / FS->sb->cluster_size)
 #define CAN_ADD_ENTRY_TO_DIR(dir, entry_name) ((dir)->file_type == FILE_TYPE_DIRECTORY && !dir_has_entry((dir), (entry_name)))
+#define FREE_CLUSTER 0
 
 
 #define BE_BIT(bit) (1 << (7 - ((bit) % 8)))
@@ -80,7 +81,7 @@ bool free_cluster(uint32_t cluster_id) {
     uint32_t cluster;
     uint8_t zero[CLUSTER_SIZE] = {0};
 
-    if (IS_FREE_CLUSTER(cluster_id)) {
+    if (cluster_id == FREE_CLUSTER) {
         return 1;
     }
     cluster = TO_DATA_CLUSTER(cluster_id);
@@ -102,8 +103,8 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
 
     cluster = cluster_id;
     if (as_data_cluster) {
-        // allocate a new cluster
-        if (IS_FREE_CLUSTER(cluster_id)) {
+        // allocate a new cluster if the cluster ID is unknown
+        if (cluster_id == FREE_CLUSTER) {
             if (!find_free_spots(FS->sb->data_bm_start_addr, FS->sb->inode_bm_start_addr, &cluster_id)) {
                 fprintf(stderr, "Ran out of clusters!\n");
                 exit(1);

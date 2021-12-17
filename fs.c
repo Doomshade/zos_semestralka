@@ -20,7 +20,7 @@
 #define ALIGN_DOWN(num, to) (num) = ALIGNED_DOWN((num), (to));
 #define SEEK_CLUSTER(cluster) fseek(FS->file, (cluster) * FS->sb->cluster_size, SEEK_SET);
 #define TO_DATA_CLUSTER(cluster) (((cluster) - 1) + FS->sb->data_start_addr / FS->sb->cluster_size)
-#define CAN_ADD_ENTRY_TO_DIR(dir, entry_name) ((dir)->file_type == FILE_TYPE_DIRECTORY && !dir_has_entry((dir), (entry_name)))
+#define CAN_ADD_ENTRY_TO_DIR(dir, entry_name) ((dir)->file_type == FILE_TYPE_DIRECTORY && !dir_has_entry_((dir), (entry_name)))
 
 
 #define BE_BIT(bit) (1 << (7 - ((bit) % 8)))
@@ -239,7 +239,7 @@ static bool inode_write(struct inode* inode) {
     return true;
 }
 
-static uint32_t get_dir_entries(struct inode* dir, struct entry** _entries) {
+static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entries) {
     struct entry* entries;
     uint32_t remaining_bytes;
     uint32_t i, j;
@@ -271,7 +271,7 @@ static uint32_t get_dir_entries(struct inode* dir, struct entry** _entries) {
     return dir->file_size / sizeof(struct entry);
 }
 
-static bool dir_has_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
+static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
     struct entry* entries;
     uint32_t count;
     uint32_t i;
@@ -279,7 +279,7 @@ static bool dir_has_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH
     if (!dir) {
         return false;
     }
-    count = get_dir_entries(dir, &entries);
+    count = get_dir_entries_(dir, &entries);
     for (i = 0; i < count; ++i) {
         if (entries[i].inode_id == FREE_INODE) {
             fprintf(stderr, "A null entry encountered, RIP\n");
@@ -402,11 +402,11 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
         fprintf(stderr, "Cannot delete the '%s' entry!\n", name);
         return false;
     }
-    if (!dir_has_entry(dir, name)) {
+    if (!dir_has_entry_(dir, name)) {
         return false;
     }
 
-    if (!(amount = get_dir_entries(dir, &entries))) {
+    if (!(amount = get_dir_entries_(dir, &entries))) {
         return false;
     }
 
@@ -506,7 +506,8 @@ struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAM
 }
 
 uint32_t create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
-    return create_empty_dir(inode_read(parent_dir_inode_id), name, false)->id;
+    struct inode* dir = create_empty_dir(inode_read(parent_dir_inode_id), name, false);
+    return dir ? dir->id : FREE_INODE;
 }
 
 uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
@@ -554,6 +555,7 @@ int fs_format(uint32_t disk_size) {
 
     FS->root = root->id;
     FS->curr_dir = root->id;
+    FS->fmt = true;
     return 0;
 }
 
@@ -564,7 +566,7 @@ struct inode* inode_get(uint32_t inode_id) {
 uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
     struct entry* entries;
     uint32_t i;
-    for (i = 0; i < get_dir_entries(inode_read(dir), &entries); ++i) {
+    for (i = 0; i < get_dir_entries_(inode_read(dir), &entries); ++i) {
         if (strcmp(entries[i].item_name, name) == 0) {
             return entries[i].inode_id;
         }
@@ -572,6 +574,13 @@ uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
     return FREE_INODE;
 }
 
+bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
+    return dir_has_entry_(inode_read(dir), name);
+}
+
+uint32_t get_dir_entries(uint32_t dir, struct entry** _entries) {
+    return get_dir_entries_(inode_read(dir), _entries);
+}
 
 void test() {
     int i;

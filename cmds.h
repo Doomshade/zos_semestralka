@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include "fs.h"
 
+
+
+
 /**
  * 'Zkopíruje soubor s1 do umístění s2'
  * @param s

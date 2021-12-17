@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #define MAX(a, b) (a) > (b) ? (a) : (b)
 #define MIN(a, b) (a) < (b) ? (a) : (b)
@@ -28,10 +29,14 @@ void debug();
  * @param s the number
  * @return
  */
-uint32_t parse(char* s);
+uint32_t parse(const char* s);
 
-uint32_t parse_disk_size(char* s);
-
+/**
+ * Parses the dir
+ * @param dir the ptr to dir name
+ * @return the dir inode ID
+ */
+void parse_dir(const char** dir, uint32_t* parent, uint32_t* child);
 
 void parse_cmd(FILE* stream);
 

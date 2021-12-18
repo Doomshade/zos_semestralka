@@ -125,8 +125,8 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
             fprintf(stderr, "Attempted to override data after cluster!\n");
             exit(1);
         }
-        memcpy(arr + read, ptr, size);
-        size += read;
+        memcpy(arr + offset, ptr, size);
+        size += offset;
     } else {
         memcpy(arr, ptr, size);
     }

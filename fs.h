@@ -141,7 +141,32 @@ uint32_t get_dir_entries(uint32_t dir, struct entry** _entries);
  * @param entry_id the entry inode id
  * @return true if found, false otherwise
  */
-bool get_dir_entry(uint32_t dir, struct entry* entry, uint32_t entry_id);
+bool get_dir_entry_id(uint32_t dir, struct entry* entry, uint32_t entry_id);
+
+/**
+ * Retrieves a directory entry based on the name
+ * @param dir the dir inode
+ * @param entry the entry pointer
+ * @param name the entry name
+ * @return true if found, false otherwise
+ */
+bool get_dir_entry_name(uint32_t dir, struct entry* entry, const char name[MAX_FILENAME_LENGTH]);
+
+/**
+ * Removes a
+ * @param dir
+ * @param dir_name
+ * @return
+ */
+bool remove_dir(uint32_t dir, const char dir_name[MAX_FILENAME_LENGTH]);
+
+/**
+ * Sorts the entries
+ * @param entries the entries
+ * @param size the amount of entries
+ */
+void sort_entries(struct entry** entries, uint32_t size);
+
 int file_contents(uint32_t inode, uint8_t* arr, uint32_t* size);
 
 #endif //ZOS_SEMESTRALKA_FS_H

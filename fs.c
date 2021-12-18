@@ -296,8 +296,10 @@ static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entrie
     }
     free(read);
 
-    qsort(entries, dir->file_size / sizeof(struct entry), sizeof(struct entry), compare_entries);
-    *_entries = entries;
+    // if an entry ptr is passed the call likely only wanted the amount of entries
+    if (_entries) {
+        *_entries = entries;
+    }
     return dir->file_size / sizeof(struct entry);
 }
 
@@ -449,9 +451,8 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
             // TODO check what cluster it actually is
             write_cluster(dir->direct[0], &entries[amount - 1], sizeof(struct entry),
                           i * sizeof(struct entry), true, false);
-            write_cluster(dir->direct[0], zeroes, sizeof(struct entry),
-                          dir->file_size -= sizeof(struct entry), true, false);
-            return true;
+            dir->file_size -= sizeof(struct entry);
+            return inode_write(dir);
         }
     }
     return false;
@@ -611,7 +612,11 @@ uint32_t get_dir_entries(uint32_t dir, struct entry** _entries) {
     return get_dir_entries_(inode_read(dir), _entries);
 }
 
-bool get_dir_entry(uint32_t dir, struct entry* entry, uint32_t entry_id) {
+void sort_entries(struct entry** entries, uint32_t size) {
+    qsort(*entries, size, sizeof(struct entry), compare_entries);
+}
+
+bool get_dir_entry_id(uint32_t dir, struct entry* entry, uint32_t entry_id) {
     struct entry* entries;
     uint32_t i;
 
@@ -622,6 +627,37 @@ bool get_dir_entry(uint32_t dir, struct entry* entry, uint32_t entry_id) {
         }
     }
     return false;
+}
+
+bool get_dir_entry_name(uint32_t dir, struct entry* entry, const char name[MAX_FILENAME_LENGTH]) {
+    struct entry* entries;
+    uint32_t i;
+
+    for (i = 0; i < get_dir_entries(dir, &entries); ++i) {
+        if (strncmp(entries[i].item_name, name, MAX_FILENAME_LENGTH) == 0) {
+            *entry = entries[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+bool remove_dir(uint32_t dir, const char dir_name[MAX_FILENAME_LENGTH]) {
+    struct inode* diri;
+    struct entry subdire;
+
+
+    diri = inode_read(dir);
+    // the directory or the subdirectory does not exist
+    if (!diri || !get_dir_entry_name(dir, &subdire, dir_name)) {
+        return false;
+    }
+
+    // the subdirectory has too many entries
+    if (get_dir_entries(subdire.inode_id, NULL) != 2) {
+        return false;
+    }
+    return remove_entry(diri, dir_name);
 }
 
 void test() {

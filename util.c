@@ -101,19 +101,19 @@ void parse_cmd(FILE* stream) {
             printf("OK\n");
             break;
         case ERR_CANNOT_CREATE_FILE:
-            printf("CANNOT CREATE FILE\n");
+            fprintf(stderr,"CANNOT CREATE FILE\n");
             break;
         case ERR_FILE_NOT_FOUND:
-            printf("FILE NOT FOUND (není zdroj)\n");
+            fprintf(stderr,"FILE NOT FOUND\n");
             break;
         case ERR_PATH_NOT_FOUND:
-            printf("PATH NOT FOUND (neexistuje cílová cesta)\n");
+            fprintf(stderr,"PATH NOT FOUND\n");
             break;
         case ERR_NOT_EMPTY:
-            printf("NOT EMPTY (adresář obsahuje podadresáře, nebo soubory)\n");
+            fprintf(stderr, "NOT EMPTY\n");
             break;
         case ERR_EXIST:
-            printf("EXIST (nelze založit, již existuje)\n");
+            fprintf(stderr, "EXIST\n");
             break;
         case CUSTOM_OUTPUT:
             break;
@@ -127,26 +127,30 @@ void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir) {
     struct entry curr_dir;
     const struct entry EMPTY = {.inode_id = FREE_INODE, .item_name = ""};
     char* cpy;
+    char* cpy_store;
     char* tok;
 
     cpy = malloc(sizeof(char) * (strlen(dir) + 1));
+    cpy_store = cpy;
     strcpy(cpy, dir);
 
+    // the dir starts with "/" - means it's an absolute path
     if (strncmp(cpy, ROOT_DIR, 1) == 0) {
         curr_dir = (struct entry) {.inode_id= FS->root, .item_name = ROOT_DIR};
+
+        // it's literally only "/" -> return root
         if (strlen(cpy) == 1) {
             *cur_dir = (struct entry) curr_dir;
             *prev_dir = (struct entry) curr_dir;
             return;
         }
+        // skip "/"
         cpy++;
     } else {
         curr_dir = (struct entry) {.inode_id = FS->curr_dir, .item_name = CURR_DIR};
     }
 
-    // TODO must have diff results for ls and mkdir!
     tok = strtok(cpy, DIR_SEPARATOR);
-
     while (tok != NULL) {
         *prev_dir = (struct entry) curr_dir;
         curr_dir = (struct entry) {.inode_id = inode_from_name(curr_dir.inode_id, tok)};
@@ -156,10 +160,10 @@ void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir) {
         // we haven't gotten to the end of the directory search,
         // this means the directory does not exist
         if (tok != NULL && curr_dir.inode_id == FREE_INODE) {
-            *prev_dir = (struct entry) EMPTY;
             *cur_dir = (struct entry) EMPTY;
-            return;
+            break;
         }
     }
+    free(cpy_store);
 }
 

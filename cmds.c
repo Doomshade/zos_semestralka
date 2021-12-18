@@ -6,6 +6,19 @@
 #include "cmd_handler.h"
 #include <stdlib.h>
 
+#define VALIDATE_DIR_ENTRY(s) \
+struct entry parent;\
+struct entry dir;\
+parse_dir((s), &parent, &dir);\
+if (dir.inode_id == FREE_INODE) {\
+return ERR_FILE_NOT_FOUND;\
+}
+
+#define VALIDATE_DIR(inode)\
+if ((inode) == FREE_INODE || inode_get((inode))->file_type != FILE_TYPE_DIRECTORY) {\
+return ERR_PATH_NOT_FOUND;\
+}
+
 int format(char* s[]) {
     uint32_t size;
     size = parse(s[0]);
@@ -14,6 +27,13 @@ int format(char* s[]) {
 }
 
 int cp(char* s[]) {
+    struct entry file;
+
+    VALIDATE_DIR_ENTRY(s[1])
+    // TODO probs not right
+    if (!get_dir_entry_name(FS->curr_dir, &file, s[0])) {
+        return ERR_FILE_NOT_FOUND;
+    }
     return OK;
 }
 
@@ -22,6 +42,9 @@ int mv(char* s[]) {
 }
 
 int rm(char* s[]) {
+    struct entry file;
+
+    VALIDATE_DIR_ENTRY(s[0])
     return OK;
 }
 
@@ -40,7 +63,8 @@ int mkdir(char* a[]) {
 }
 
 int rmdir(char* a[]) {
-    return OK;
+    VALIDATE_DIR_ENTRY(a[0])
+    return remove_dir(parent.inode_id, dir.item_name) ? OK : ERR_NOT_EMPTY;
 }
 
 int ls(char* a[]) {
@@ -52,15 +76,14 @@ int ls(char* a[]) {
     uint32_t i;
 
     parse_dir(a[0], &parent, &dir);
-    if (dir.inode_id == FREE_INODE) {
-        return ERR_PATH_NOT_FOUND;
-    }
+    VALIDATE_DIR(dir.inode_id)
+
     amount = get_dir_entries(dir.inode_id, &entries);
+    sort_entries(&entries, amount);
     for (i = 0; i < amount; ++i) {
         inode = inode_get(entries[i].inode_id);
         printf("%s%s\n", inode->file_type == FILE_TYPE_REGULAR_FILE ? "-" : "+", entries[i].item_name);
     }
-
     return CUSTOM_OUTPUT;
 }
 
@@ -74,9 +97,7 @@ int cd(char* a[]) {
 
     parse_dir(a[0], &parent, &dir);
 
-    if (dir.inode_id == FREE_INODE) {
-        return ERR_PATH_NOT_FOUND;
-    }
+    VALIDATE_DIR(dir.inode_id)
     FS->curr_dir = dir.inode_id;
     return OK;
 }
@@ -111,7 +132,7 @@ int pwd(char* empt[]) {
         n = malloc(sizeof(node));
         VALIDATE_MALLOC(n)
 
-        if (!get_dir_entry(parent.inode_id, &entry, dir.inode_id)) {
+        if (!get_dir_entry_id(parent.inode_id, &entry, dir.inode_id)) {
             fprintf(stderr, "No entry %s found in dir %s! This should not happen!\n", dir.item_name, parent.item_name);
             return ERR_UNKNOWN;
         }

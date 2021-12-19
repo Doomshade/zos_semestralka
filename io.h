@@ -70,4 +70,14 @@ uint32_t
 write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bool as_data_cluster,
               bool override);
 
+/**
+ * Reads an indirect cluster or a direct one if rank 0 is passed
+ * @param cluster cluster #
+ * @param arr the array buffer
+ * @param size the size of the array buffer
+ * @param rank the indirect "rank" 0 = direct, 1 = single indirect, 2 = double indirect
+ * @return if the cluster was read correctly
+ */
+bool read_indirect_cluster(uint32_t cluster, uint8_t* arr, uint32_t size, uint8_t rank);
+
 #endif //ZOS_SEMESTRALKA_IO_H

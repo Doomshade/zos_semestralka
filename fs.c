@@ -22,7 +22,6 @@
 #define TO_DATA_CLUSTER(cluster) (((cluster) - 1) + FS->sb->data_start_addr / FS->sb->cluster_size)
 #define CAN_ADD_ENTRY_TO_DIR(dir, entry_name) ((dir)->file_type == FILE_TYPE_DIRECTORY && !dir_has_entry_((dir), (entry_name)))
 
-
 #define BE_BIT(bit) (1 << (7 - ((bit) % 8)))
 
 // seek at the start of the bitmap
@@ -98,6 +97,33 @@ static bool init_superblock(uint32_t disk_size, struct superblock** _sb);
 static bool write_fs_header();
 
 static bool free_inode(struct inode* inode);
+
+/**
+ * Writes data to a direct cluster
+ * @param inode the inode to write to
+ * @param ptr the ptr to data
+ * @param size the amount to write
+ */
+static void write_directs(struct inode* inode, void** ptr, uint32_t* size);
+
+/**
+ * Writes data to an indirect cluster
+ * @param inode the inode to write to
+ * @param ptr the ptr to data
+ * @param size the amount to write
+ */
+static void write_indirect1(struct inode* inode, void** ptr, uint32_t* size);
+
+/**
+ * Writes data to a second indirect cluster
+ * @param inode the inode to write to
+ * @param ptr the ptr to data
+ * @param size the amount to write
+ */
+static void write_indirect2(struct inode* inode, void** ptr, uint32_t* size);
+
+static uint32_t
+write_inode_cluster(struct inode* inode, void** ptr, uint32_t* size, uint32_t cluster);
 
 /**
  * The file system global variable definition.
@@ -326,97 +352,109 @@ static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME
     return false;
 }
 
-static bool get_clusters(int** clusters, uint32_t size) {
-    int* _clusters;
-
-    if (!clusters) {
-        return 1;
-    }
-
-    _clusters = calloc(10, sizeof(int));
-    VALIDATE_MALLOC(_clusters)
-
-    *clusters = _clusters;
-    return 0;
-}
-
-/*static bool read_data(struct inode* inode, uint32_t* data_len, union data_size** data, uint8_t union_data_size) {
-    return 0;
-}*/
-
 static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool append) {
-    uint32_t cluster;
-    uint32_t offset;
-    uint32_t write_size;
-    uint32_t i, j;
-    uint8_t arr[CLUSTER_SIZE];
-    uint32_t indirect_cluster;
 
     if (!inode || !ptr) {
         return false;
     }
-    if (inode->file_size + size > MAX_FILE_SIZE) {
-        fprintf(stderr, "The inode %u (%u MiB) is too large to save! (max %u MiB)\n", inode->id,
-                inode->file_size + size, MAX_FILE_SIZE);
+
+    if (!append) {
+        inode->file_size = 0;
+    }
+
+    if (inode->file_size + size > MAX_FS) {
+        fprintf(stderr, "The inode %u (%u MiB) is too large to save! (max %lu MiB)\n", inode->id,
+                inode->file_size + size, MAX_FS);
         return false;
     }
 
-    // clear out the allocated clusters if we do not append
-    if (!append) {
-        for (i = 0; i < DIRECT_AMOUNT; ++i) {
-            free_cluster(inode->direct[i]);
-        }
-        for (i = 0; i < INDIRECT_AMOUNT; ++i) {
-            if (read_cluster(inode->indirect[i], FS->sb->cluster_size, arr, 0)) {
-                for (j = 0; j < FS->sb->cluster_size / sizeof(uint32_t); ++i) {
-                    read_cluster(inode->indirect[i], sizeof(uint32_t), (uint8_t*) &indirect_cluster, 0);
-                    free_cluster(indirect_cluster);
-                }
-            }
-        }
+    write_directs(inode, &ptr, &size);
+    write_indirect1(inode, &ptr, &size);
+    write_indirect2(inode, &ptr, &size);
+    return size == 0 && inode_write(inode);
+}
+
+static void write_directs(struct inode* inode, void** ptr, uint32_t* size) {
+    uint32_t cluster;
+
+    if (!inode || !ptr || !size || !*size) {
+        return;
     }
 
-    // first write to direct blocks if possible
-    while (size > 0 && inode->file_size < FS->sb->cluster_size * DIRECT_AMOUNT) {
-        // write to a cluster with the given offset
-        // the offset will be zeroed if the cluster was empty
-        cluster = inode->direct[inode->file_size / FS->sb->cluster_size];
+    while (*size && inode->file_size < DIRECT_TOTAL_SIZE) {
+        cluster = inode->file_size / FS->sb->cluster_size;
+        inode->direct[cluster] = write_inode_cluster(inode, ptr, size, inode->direct[cluster]);
+    }
+}
+
+static void write_indirect1(struct inode* inode, void** ptr, uint32_t* size) {
+    uint32_t cluster;
+    uint32_t offset;
+    uint32_t write_size;
+    uint32_t id1[CLUSTER_SIZE / sizeof(uint32_t)];
+
+    if (!inode || !ptr || !size || !*size) {
+        return;
+    }
+
+    read_cluster(inode->indirect[0], FS->sb->cluster_size, (uint8_t*) id1, 0);
+    while (*size && inode->file_size < DIRECT_TOTAL_SIZE + INDIRECT1_TOTAL_SIZE) {
+        // the index is (file_size - DIRECT_TOTAL_SIZE) / FS->sb->cluster_size
+        uint32_t index = (inode->file_size - DIRECT_TOTAL_SIZE) / FS->sb->cluster_size;
+        cluster = id1[index];
         offset = inode->file_size % FS->sb->cluster_size;
-        write_size = MIN(size, FS->sb->cluster_size - offset);
+        write_size = MIN(*size, FS->sb->cluster_size - offset);
+        *size -= write_size;
+        inode->file_size += write_size;
+        id1[index] = write_cluster(cluster, ptr, write_size, offset, true, false);
+        ptr += write_size;
+    }
+}
+
+static void write_indirect2(struct inode* inode, void** ptr, uint32_t* size) {
+    uint32_t cluster;
+    uint32_t offset;
+    uint32_t write_size;
+    uint32_t id1[CLUSTER_SIZE / sizeof(uint32_t)];
+    uint32_t id2[CLUSTER_SIZE / sizeof(uint32_t)];
+
+
+    if (!inode || !ptr || !size || !*size) {
+        return;
+    }
+
+    read_cluster(inode->indirect[1], FS->sb->cluster_size, (uint8_t*) id2, 0);
+    while (*size && inode->file_size < DIRECT_TOTAL_SIZE + INDIRECT1_TOTAL_SIZE + INDIRECT2_TOTAL_SIZE) {
+        uint32_t index = (inode->file_size - DIRECT_TOTAL_SIZE) / FS->sb->cluster_size;
+        uint32_t index2 = (inode->file_size - DIRECT_TOTAL_SIZE - INDIRECT1_TOTAL_SIZE) /
+                          (FS->sb->cluster_size * FS->sb->cluster_size);
+        cluster = id2[index2];
+        offset = inode->file_size % FS->sb->cluster_size;
+        write_size = MIN(*size, FS->sb->cluster_size - offset);
         size -= write_size;
         inode->file_size += write_size;
+        id1[index2] = write_cluster(cluster, ptr, write_size, offset, true, false);
+        ptr += write_size;
 
-        inode->direct[inode->file_size / FS->sb->cluster_size] = write_cluster(cluster, ptr, write_size, offset,
-                                                                               true, false);
     }
-    return inode_write(inode);
 }
 
-static bool read_indirect(uint32_t cluster, uint8_t* arr, uint32_t* remaining, const uint32_t size, uint8_t rank) {
-    if (!arr || !remaining || *remaining <= 0 || cluster == 0 || rank < 0 || rank > 2) {
-        return false;
-    }
-    if (rank == 0) {
-        uint32_t offset = (size - *remaining) % FS->sb->cluster_size;
-        (*remaining) -= read_cluster(cluster, MIN(*remaining, FS->sb->cluster_size) - offset, (arr + offset), offset);
-        return true;
-    }
+static uint32_t
+write_inode_cluster(struct inode* inode, void** ptr, uint32_t* size, uint32_t cluster) {
+    uint32_t offset;
+    uint32_t write_size;
+    uint32_t cluster_out;
 
-    uint32_t i;
-    uint32_t buf[CLUSTER_SIZE / sizeof(uint32_t)];
+    // calculate the offset and write size
+    offset = inode->file_size % FS->sb->cluster_size;
+    write_size = MIN(*size, FS->sb->cluster_size - offset);
+    *size -= write_size;
+    inode->file_size += write_size;
 
-    read_cluster(cluster, FS->sb->cluster_size, (uint8_t*) buf, 0);
-    for (i = 0; i < FS->sb->cluster_size / sizeof(uint32_t); ++i) {
-        if (!read_indirect(buf[i], arr, remaining, size, rank - 1)) {
-            return true;
-        }
-    }
-    return true;
-}
-
-static bool read_indirects(uint32_t cluster, uint8_t* arr, const uint32_t size, uint8_t rank) {
-    uint32_t remaining = size;
-    return read_indirect(cluster, arr, &remaining, size, rank);
+    // write to the cluster and shift the buf pointer
+    cluster_out = write_cluster(cluster, *ptr, write_size, offset, true, false);
+    *ptr += write_size;
+    return cluster_out;
 }
 
 static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {

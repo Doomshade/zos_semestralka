@@ -15,7 +15,10 @@
 #define MAX_FILENAME_LENGTH 12
 #define DIRECT_AMOUNT 5
 #define INDIRECT_AMOUNT 2
-#define MAX_FILE_SIZE ((DIRECT_AMOUNT * CLUSTER_SIZE) + INDIRECT_AMOUNT * (CLUSTER_SIZE/4) * CLUSTER_SIZE)
+#define DIRECT_TOTAL_SIZE (FS->sb->cluster_size * DIRECT_AMOUNT)
+#define INDIRECT1_TOTAL_SIZE (FS->sb->cluster_size * FS->sb->cluster_size / sizeof(uint32_t))
+#define INDIRECT2_TOTAL_SIZE ((FS->sb->cluster_size / sizeof(uint32_t)) * (INDIRECT1_TOTAL_SIZE))
+#define MAX_FS (DIRECT_TOTAL_SIZE + INDIRECT1_TOTAL_SIZE + INDIRECT2_TOTAL_SIZE)
 #define CURR_DIR "."
 #define PREV_DIR ".."
 #define ROOT_DIR "/"

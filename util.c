@@ -11,21 +11,22 @@ void remove_nl(char* s) {
 
 void debug() {
     struct superblock* sb = FS->sb;
-    printf("%-25s: %lu\n", "Inode size", sizeof(struct inode));
-    printf("%-25s: %lu\n", "Superblock size", sizeof(struct superblock));
-    printf("%-25s: %lu\n", "char size", sizeof(uint8_t));
-    printf("%-25s: %lu\n", "entry size", sizeof(struct entry));
-    printf("%-25s: %lu\n", "FS size", sizeof(struct fs));
+    printf("%-25s: %luB\n", "Inode size", sizeof(struct inode));
+    printf("%-25s: %luB\n", "Superblock size", sizeof(struct superblock));
+    printf("%-25s: %luB\n", "entry size", sizeof(struct entry));
+    printf("%-25s: %luB\n", "FS (struct) size", sizeof(struct fs));
     printf("%-25s: %s\n", "filename", FS->filename);
     printf("%-25s: %u\n", "inode_count", sb->inode_count);
     printf("%-25s: %u\n", "free_inode_count", sb->free_inode_count);
     printf("%-25s: %u\n", "free_cluster_count", sb->free_cluster_count);
-    printf("%-25s: %u\n", "cluster_size", sb->cluster_size);
-    printf("%-25s: %u\n", "inode_size", sb->inode_size);
+    printf("%-25s: %uKiB\n", "cluster_size", sb->cluster_size / 1024);
+    printf("%-25s: %uB\n", "inode_size", sb->inode_size);
     printf("%-25s: %u\n", "cluster_count", sb->cluster_count);
     printf("%-25s: %u\n", "free_cluster_count", sb->free_cluster_count);
-    printf("%-25s: %u\n", "disk_size", sb->disk_size);
-    printf("%-25s: %u\n", "max filesize", MAX_FILE_SIZE);
+    printf("%-25s: %uMiB\n", "disk_size", (sb->disk_size / 1024) / 1024);
+    printf("%-25s: %uMiB\n", "free disk size",
+           (sb->disk_size - ((sb->cluster_count - sb->free_cluster_count) * sb->cluster_size)) / 1024 / 1024);
+    printf("%-25s: %luGiB\n", "max filesize", MAX_FS / 1024 / 1024 / 1024);
 }
 
 uint32_t mult(char size[2]) {
@@ -101,13 +102,13 @@ void parse_cmd(FILE* stream) {
             printf("OK\n");
             break;
         case ERR_CANNOT_CREATE_FILE:
-            fprintf(stderr,"CANNOT CREATE FILE\n");
+            fprintf(stderr, "CANNOT CREATE FILE\n");
             break;
         case ERR_FILE_NOT_FOUND:
-            fprintf(stderr,"FILE NOT FOUND\n");
+            fprintf(stderr, "FILE NOT FOUND\n");
             break;
         case ERR_PATH_NOT_FOUND:
-            fprintf(stderr,"PATH NOT FOUND\n");
+            fprintf(stderr, "PATH NOT FOUND\n");
             break;
         case ERR_NOT_EMPTY:
             fprintf(stderr, "NOT EMPTY\n");

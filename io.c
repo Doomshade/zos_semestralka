@@ -28,6 +28,33 @@ fseek(FS->file, (bit) / 8, SEEK_CUR); \
 #define SEEK_INODE(inode_id) fseek(FS->file, FS->sb->inode_start_addr, SEEK_SET); \
 fseek(FS->file, ((inode_id) - 1) * FS->sb->inode_size, SEEK_CUR);
 
+static bool read_indirect(uint32_t cluster, uint8_t* arr, uint32_t* remaining, const uint32_t size, uint8_t rank) {
+    if (!arr || !remaining || *remaining <= 0 || cluster == 0 || rank < 0 || rank > 2) {
+        return false;
+    }
+    if (rank == 0) {
+        uint32_t offset = (size - *remaining) % FS->sb->cluster_size;
+        (*remaining) -= read_cluster(cluster, MIN(*remaining, FS->sb->cluster_size) - offset, (arr + offset), offset);
+        return true;
+    }
+
+    uint32_t i;
+    uint32_t buf[CLUSTER_SIZE / sizeof(uint32_t)];
+
+    read_cluster(cluster, FS->sb->cluster_size, (uint8_t*) buf, 0);
+    for (i = 0; i < FS->sb->cluster_size / sizeof(uint32_t); ++i) {
+        // once we reach an invalid state (for example cluster ID 0) we stop
+        if (!read_indirect(buf[i], arr, remaining, size, rank - 1)) {
+            return true;
+        }
+    }
+    return true;
+}
+
+bool read_indirect_cluster(uint32_t cluster, uint8_t* arr, uint32_t size, uint8_t rank) {
+    uint32_t remaining = size;
+    return read_indirect(cluster, arr, &remaining, size, rank);
+}
 
 bool is_set_bit(uint32_t bm_start_addr, uint32_t bit) {
     uint8_t byte;
@@ -65,7 +92,6 @@ bool fexists(const char* filename) {
     struct stat s;
     return stat(filename, &s) == 0;
 }
-
 
 uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr, uint32_t offset) {
     if (cluster == 0) {

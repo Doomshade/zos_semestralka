@@ -88,6 +88,15 @@ int ls(char* a[]) {
 }
 
 int cat(char* s[]) {
+    uint32_t inode;
+    uint8_t* arr;
+
+    inode = inode_from_name(FS->curr_dir, s[0]);
+    if (!inode) {
+        return ERR_FILE_NOT_FOUND;
+    }
+    arr = inode_get_contents(inode);
+    printf("%s\n", arr);
     return CUSTOM_OUTPUT;
 }
 
@@ -152,11 +161,45 @@ int pwd(char* empt[]) {
 }
 
 int info(char* as[]) {
+    struct inode* inode;
+
+    /*
+    VALIDATE_DIR_ENTRY(as[0])
+
+    // TODO bad name, cant pass dir.item_name
+    if (dir.inode_id == 0) {
+        get_dir_entry_name(parent.inode_id, &dir, dir.item_name);
+    }*/
+
+    inode = inode_get(inode_from_name(FS->curr_dir, as[0]));
+    printf("%s - %u - %u - [%u, %u, %u, %u, %u] - %u - %u\n", as[0], inode->file_size, inode->id,
+           inode->direct[0], inode->direct[1], inode->direct[2], inode->direct[3], inode->direct[4],
+           inode->indirect[0], inode->indirect[1]);
     return CUSTOM_OUTPUT;
 }
 
 int incp(char* s[]) {
-    return OK;
+    FILE* f;
+    uint32_t inode_id;
+    uint32_t file_size;
+    uint8_t* buf;
+    bool success;
+
+    f = fopen(s[0], "r");
+    if (!f) {
+        return ERR_FILE_NOT_FOUND;
+    }
+    if (!(inode_id = create_file(FS->curr_dir, s[0]))) {
+        return ERR_EXIST;
+    }
+    fseek(f, 0, SEEK_END);
+    file_size = ftell(f);
+    rewind(f);
+    buf = malloc(file_size);
+    fread(buf, file_size, 1, f);
+    success = inode_write_contents(inode_id, buf, file_size);
+    free(buf);
+    return success ? OK : ERR_UNKNOWN;
 }
 
 int outcp(char* s[]) {

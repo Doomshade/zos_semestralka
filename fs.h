@@ -24,6 +24,9 @@
 #define ROOT_DIR "/"
 #define DIR_SEPARATOR "/"
 
+/**
+ * The file system global variable
+ */
 extern struct fs* FS;
 
 struct superblock {
@@ -170,6 +173,15 @@ bool remove_dir(uint32_t dir, const char dir_name[MAX_FILENAME_LENGTH]);
  */
 void sort_entries(struct entry** entries, uint32_t size);
 
-int file_contents(uint32_t inode, uint8_t* arr, uint32_t* size);
+/**
+ * Writes contents to a file
+ * @param inode_id the inode id of the file
+ * @param ptr the ptr to the data
+ * @param size the size of the data
+ * @return
+ */
+bool inode_write_contents(uint32_t inode_id, void* ptr, uint32_t size);
+
+uint8_t* inode_get_contents(uint32_t inode);
 
 #endif //ZOS_SEMESTRALKA_FS_H

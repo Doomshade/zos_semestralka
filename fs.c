@@ -94,6 +94,18 @@ static bool load_fs_from_file(const char* filename);
  */
 static bool init_superblock(uint32_t disk_size, struct superblock** _sb);
 
+
+/**
+ * Reads an indirect cluster or a direct one if rank 0 is passed
+ * @param cluster cluster #
+ * @param arr the array buffer
+ * @param size the size of the array buffer
+ * @param rank the indirect "rank" 0 = direct, 1 = single indirect, 2 = double indirect
+ * @return if the cluster was read correctly
+ */
+static bool read_indirect_cluster(uint32_t cluster, uint8_t* arr, uint32_t size, uint8_t rank);
+
+
 static bool write_fs_header();
 
 static bool free_inode(struct inode* inode);
@@ -353,7 +365,6 @@ static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME
 }
 
 static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool append) {
-
     if (!inode || !ptr) {
         return false;
     }
@@ -377,7 +388,7 @@ static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool appen
 static void write_directs(struct inode* inode, void** ptr, uint32_t* size) {
     uint32_t cluster;
 
-    if (!inode || !ptr || !size || !*size) {
+    if (!inode || !ptr || !*ptr || !size || !*size) {
         return;
     }
 
@@ -393,22 +404,30 @@ static void write_indirect1(struct inode* inode, void** ptr, uint32_t* size) {
     uint32_t write_size;
     uint32_t id1[CLUSTER_SIZE / sizeof(uint32_t)];
 
-    if (!inode || !ptr || !size || !*size) {
+    if (!inode || !ptr || !*ptr || !size || !*size) {
         return;
     }
 
-    read_cluster(inode->indirect[0], FS->sb->cluster_size, (uint8_t*) id1, 0);
+    memset(id1, 0, sizeof(id1));
+    // the indirect cluster didn't exist, write an empty one
+    if (!read_cluster(inode->indirect[0], FS->sb->cluster_size, (uint8_t*) id1, 0)) {
+        inode->indirect[0] = write_cluster(0, id1, sizeof(id1), 0, true, true);
+    }
+
+    // index in indirect cluster = (size - DIRECTS) / cluster_size
     while (*size && inode->file_size < DIRECT_TOTAL_SIZE + INDIRECT1_TOTAL_SIZE) {
         // the index is (file_size - DIRECT_TOTAL_SIZE) / FS->sb->cluster_size
         uint32_t index = (inode->file_size - DIRECT_TOTAL_SIZE) / FS->sb->cluster_size;
         cluster = id1[index];
         offset = inode->file_size % FS->sb->cluster_size;
         write_size = MIN(*size, FS->sb->cluster_size - offset);
+        id1[index] = write_cluster(cluster, *ptr, write_size, offset, true, false);
+
         *size -= write_size;
         inode->file_size += write_size;
-        id1[index] = write_cluster(cluster, ptr, write_size, offset, true, false);
-        ptr += write_size;
+        *ptr += write_size;
     }
+    write_cluster(inode->indirect[0], id1, sizeof(id1), 0, true, true);
 }
 
 static void write_indirect2(struct inode* inode, void** ptr, uint32_t* size) {
@@ -419,7 +438,7 @@ static void write_indirect2(struct inode* inode, void** ptr, uint32_t* size) {
     uint32_t id2[CLUSTER_SIZE / sizeof(uint32_t)];
 
 
-    if (!inode || !ptr || !size || !*size) {
+    if (!inode || !ptr || !*ptr || !size || !*size) {
         return;
     }
 
@@ -433,8 +452,8 @@ static void write_indirect2(struct inode* inode, void** ptr, uint32_t* size) {
         write_size = MIN(*size, FS->sb->cluster_size - offset);
         size -= write_size;
         inode->file_size += write_size;
-        id1[index2] = write_cluster(cluster, ptr, write_size, offset, true, false);
-        ptr += write_size;
+        id1[index2] = write_cluster(cluster, *ptr, write_size, offset, true, false);
+        *ptr += write_size;
 
     }
 }
@@ -511,6 +530,7 @@ static struct inode*
 create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], uint8_t file_type) {
     struct inode* inode;
     struct inode* dir;
+    struct entry entry;
 
     if (dir_inode_id == FREE_INODE) {
         return NULL;
@@ -526,8 +546,12 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], u
 
     inode = inode_create();
     inode->file_type = file_type;
-    inode_write(inode);
-    return inode;
+    entry = (struct entry) {.inode_id = inode->id};
+    strncpy(entry.item_name, name, MAX_FILENAME_LENGTH);
+    if (!add_entry(dir, entry)) {
+        return NULL;
+    }
+    return inode_write(inode) ? inode : NULL;
 }
 
 struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAME_LENGTH], bool root) {
@@ -574,13 +598,65 @@ struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAM
     return dir;
 }
 
+
+static bool read_indirect(uint32_t cluster, uint8_t* arr, uint32_t* remaining, const uint32_t size, uint8_t rank) {
+    if (!arr || !remaining || *remaining <= 0 || cluster == 0 || rank < 0 || rank > 2) {
+        return false;
+    }
+    if (rank == 0) {
+        uint32_t offset = (size - *remaining) % FS->sb->cluster_size;
+        (*remaining) -= read_cluster(cluster, MIN(*remaining, FS->sb->cluster_size) - offset, (arr + offset), offset);
+        return true;
+    }
+
+    uint32_t i;
+    uint32_t buf[CLUSTER_SIZE / sizeof(uint32_t)];
+
+    read_cluster(cluster, FS->sb->cluster_size, (uint8_t*) buf, 0);
+    for (i = 0; i < FS->sb->cluster_size / sizeof(uint32_t); ++i) {
+        // once we reach an invalid state (for example cluster ID 0) we stop
+        if (!read_indirect(buf[i], arr, remaining, size, rank - 1)) {
+            return true;
+        }
+    }
+    return true;
+}
+
+static bool read_indirect_cluster(uint32_t cluster, uint8_t* arr, uint32_t size, uint8_t rank) {
+    uint32_t remaining = size;
+    return read_indirect(cluster, arr, &remaining, size, rank);
+}
+
+static void read_directs(struct inode* inode, uint8_t* arr, uint32_t* size) {
+    uint32_t i;
+
+    if (!inode || !arr || !size) {
+        return;
+    }
+    for (i = 0; i < 5 && *size; ++i, *size -= MIN(*size, FS->sb->cluster_size)) {
+        read_indirect_cluster(inode->direct[i], arr, *size, 0);
+    }
+}
+
+static void read_indirect1(struct inode* inode, uint8_t* arr, uint32_t* size) {
+    const uint32_t _size = *size;
+    read_indirect(inode->indirect[0], arr, size, _size, 1);
+}
+
+
+static void read_indirect2(struct inode* inode, uint8_t* arr, uint32_t* size) {
+    const uint32_t _size = *size;
+    read_indirect(inode->indirect[1], arr, size, _size, 2);
+}
+
 uint32_t create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
     struct inode* dir = create_empty_dir(inode_read(parent_dir_inode_id), name, false);
     return dir ? dir->id : FREE_INODE;
 }
 
 uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
-    return create_empty_file(dir_inode_id, name, FILE_TYPE_REGULAR_FILE)->id;
+    struct inode* inode = create_empty_file(dir_inode_id, name, FILE_TYPE_REGULAR_FILE);
+    return inode ? inode->id : FREE_INODE;
 }
 
 int init_fs(char* filename) {
@@ -621,6 +697,9 @@ int fs_format(uint32_t disk_size) {
 
     root = create_empty_dir(NULL, ROOT_DIR, true);
 
+    if (!root) {
+        return 1;
+    }
     FS->root = root->id;
     FS->curr_dir = FS->root;
     FS->fmt = true;
@@ -630,6 +709,31 @@ int fs_format(uint32_t disk_size) {
 struct inode* inode_get(uint32_t inode_id) {
     return inode_read(inode_id);
 }
+
+bool inode_write_contents(uint32_t inode_id, void* ptr, uint32_t size) {
+    struct inode* inode = inode_read(inode_id);
+    return inode && inode->file_type == FILE_TYPE_REGULAR_FILE && write_data(inode, ptr, size, false);
+}
+
+uint8_t* inode_get_contents(uint32_t inode_id) {
+    uint8_t* arr;
+    struct inode* inode;
+    uint32_t remaining;
+
+    inode = inode_read(inode_id);
+    if (!inode) {
+        return NULL;
+    }
+    arr = malloc(inode->file_size);
+    VALIDATE_MALLOC(arr)
+
+    remaining = inode->file_size;
+    read_directs(inode, arr, &remaining);
+    read_indirect1(inode, arr, &remaining);
+    read_indirect2(inode, arr, &remaining);
+    return !remaining ? arr : NULL;
+}
+
 
 uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
     struct entry* entries;

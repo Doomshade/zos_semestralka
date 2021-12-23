@@ -28,34 +28,6 @@ fseek(FS->file, (bit) / 8, SEEK_CUR); \
 #define SEEK_INODE(inode_id) fseek(FS->file, FS->sb->inode_start_addr, SEEK_SET); \
 fseek(FS->file, ((inode_id) - 1) * FS->sb->inode_size, SEEK_CUR);
 
-static bool read_indirect(uint32_t cluster, uint8_t* arr, uint32_t* remaining, const uint32_t size, uint8_t rank) {
-    if (!arr || !remaining || *remaining <= 0 || cluster == 0 || rank < 0 || rank > 2) {
-        return false;
-    }
-    if (rank == 0) {
-        uint32_t offset = (size - *remaining) % FS->sb->cluster_size;
-        (*remaining) -= read_cluster(cluster, MIN(*remaining, FS->sb->cluster_size) - offset, (arr + offset), offset);
-        return true;
-    }
-
-    uint32_t i;
-    uint32_t buf[CLUSTER_SIZE / sizeof(uint32_t)];
-
-    read_cluster(cluster, FS->sb->cluster_size, (uint8_t*) buf, 0);
-    for (i = 0; i < FS->sb->cluster_size / sizeof(uint32_t); ++i) {
-        // once we reach an invalid state (for example cluster ID 0) we stop
-        if (!read_indirect(buf[i], arr, remaining, size, rank - 1)) {
-            return true;
-        }
-    }
-    return true;
-}
-
-bool read_indirect_cluster(uint32_t cluster, uint8_t* arr, uint32_t size, uint8_t rank) {
-    uint32_t remaining = size;
-    return read_indirect(cluster, arr, &remaining, size, rank);
-}
-
 bool is_set_bit(uint32_t bm_start_addr, uint32_t bit) {
     uint8_t byte;
 
@@ -104,20 +76,13 @@ uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr,
 }
 
 bool free_cluster(uint32_t cluster_id) {
-    uint32_t cluster;
-    uint8_t zero[CLUSTER_SIZE] = {0};
-
     if (cluster_id == FREE_CLUSTER) {
-        return 1;
+        return true;
     }
-    cluster = TO_DATA_CLUSTER(cluster_id);
-    SEEK_CLUSTER(cluster)
-    fwrite(zero, CLUSTER_SIZE, 1, FS->file);
-    fflush(FS->file);
-    if (set_bit(FS->sb->data_bm_start_addr, cluster_id, false)) {
+    if (set_bit(FS->sb->data_bm_start_addr, TO_DATA_CLUSTER(cluster_id), false)) {
         FS->sb->free_cluster_count++;
     }
-    return 0;
+    return true;
 }
 
 uint32_t
@@ -127,6 +92,9 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
     unsigned long read;
     uint32_t cluster;
 
+    if (!ptr) {
+        return 0;
+    }
     cluster = cluster_id;
     if (as_data_cluster) {
         // allocate a new cluster if the cluster ID is unknown
@@ -147,12 +115,12 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
         // we decremented the cluster ID because we index from 0, need to add 1 to the read
         // cluster function
         read = read_cluster(cluster_id, offset, arr, 0);
-        if (read + size * 1 > CLUSTER_SIZE) {
+        if (read + size > CLUSTER_SIZE) {
             fprintf(stderr, "Attempted to override data after cluster!\n");
             exit(1);
         }
-        memcpy(arr + offset, ptr, size);
-        size += offset;
+        memcpy(arr + read, ptr, size);
+        size += read;
     } else {
         memcpy(arr, ptr, size);
     }

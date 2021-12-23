@@ -105,6 +105,7 @@ static bool init_superblock(uint32_t disk_size, struct superblock** _sb);
  */
 static bool read_indirect_cluster(uint32_t cluster, uint8_t* arr, uint32_t size, uint8_t rank);
 
+static uint64_t write_recursive(uint32_t* cluster, void** ptr, uint64_t size, uint64_t* prev_size, uint8_t rank);
 
 static bool write_fs_header();
 
@@ -365,6 +366,8 @@ static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME
 }
 
 static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool append) {
+    uint32_t i;
+    uint64_t prev_size;
     if (!inode || !ptr) {
         return false;
     }
@@ -372,17 +375,27 @@ static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool appen
     if (!append) {
         inode->file_size = 0;
     }
+    prev_size = inode->file_size;
+    inode->file_size += size;
 
-    if (inode->file_size + size > MAX_FS) {
+    if (inode->file_size > MAX_FS) {
         fprintf(stderr, "The inode %u (%u MiB) is too large to save! (max %lu MiB)\n", inode->id,
                 inode->file_size + size, MAX_FS);
         return false;
     }
 
-    write_directs(inode, &ptr, &size);
-    write_indirect1(inode, &ptr, &size);
-    write_indirect2(inode, &ptr, &size);
-    return size == 0 && inode_write(inode);
+    for (i = 0; i < DIRECT_AMOUNT; ++i) {
+        size -= write_recursive(&inode->direct[i], &ptr, size, &prev_size, 0);
+    }
+
+    for (i = 0; i < INDIRECT_AMOUNT; ++i) {
+        size -= write_recursive(&inode->indirect[i], &ptr, size, &prev_size, i + 1);
+    }
+    if (size != 0) {
+        inode->file_size = prev_size;
+        return false;
+    }
+    return inode_write(inode);
 }
 
 static void write_directs(struct inode* inode, void** ptr, uint32_t* size) {
@@ -458,6 +471,65 @@ static void write_indirect2(struct inode* inode, void** ptr, uint32_t* size) {
     }
 }
 
+#define DIRECT0_SIZE (uint64_t) (CLUSTER_SIZE)
+#define DIRECT1_SIZE ((CLUSTER_SIZE / 4) * DIRECT0_SIZE)
+#define DIRECT2_SIZE ((CLUSTER_SIZE / 4) * DIRECT1_SIZE)
+
+// checks if we can write to a cluster with "max_write_size" and previous size (offset) "prev_size"
+// if it's possible, the "size" is decremented by "prev_size" and "prev_size" is set to 0
+// if not "prev_size" is decremented by "max_write_size" and 0 is returned
+#define VALIDATE_WRITE(size, max_write_size, prev_size) \
+if ((*(prev_size)) > (max_write_size)) {\
+(*(prev_size)) -= (max_write_size);\
+return 0;\
+}\
+if ((size) + (*(prev_size)) > (max_write_size)) {\
+return 0;\
+}\
+
+
+static uint64_t write_recursive(uint32_t* cluster, void** ptr, uint64_t size, uint64_t* prev_size, uint8_t rank) {
+    uint32_t buf[CLUSTER_SIZE / 4];
+    uint32_t i;
+    uint64_t max_write_size;
+    uint64_t write_size;
+    uint64_t total_write_size;
+    uint32_t _cluster;
+    if (size == 0 || rank > 2 || !ptr || !*ptr || !prev_size) {
+        return 0;
+    }
+
+    _cluster = *cluster;
+    if (!_cluster) {
+        _cluster = write_cluster(0, *ptr, 0, 0, true, true);
+        *cluster = _cluster;
+    }
+    // it's a direct cluster, write the data
+    if (rank == 0) {
+        VALIDATE_WRITE(size, DIRECT0_SIZE, prev_size)
+
+        write_cluster(_cluster, *ptr, size, *prev_size, true, false);
+        *prev_size = 0;
+        *ptr += size;
+
+        return size;
+    }
+
+    // it's an indirect one
+    max_write_size = rank == 1 ? DIRECT1_SIZE : DIRECT2_SIZE;
+    VALIDATE_WRITE(size, max_write_size, prev_size)
+
+    read_cluster(_cluster, sizeof(buf), (uint8_t*) buf, 0);
+    total_write_size = 0;
+    for (i = 0; i < CLUSTER_SIZE / 4 && size; ++i) {
+        write_size = write_recursive(&buf[i], ptr, MIN(max_write_size / (CLUSTER_SIZE / 4), size), prev_size, rank - 1);
+        size -= write_size;
+        total_write_size += write_size;
+    }
+    write_cluster(_cluster, buf, sizeof(buf), 0, true, true);
+    return total_write_size;
+}
+
 static uint32_t
 write_inode_cluster(struct inode* inode, void** ptr, uint32_t* size, uint32_t cluster) {
     uint32_t offset;
@@ -522,6 +594,7 @@ static bool add_entry(struct inode* dir, struct entry entry) {
 
     if (inode_read(entry.inode_id)->file_type == FILE_TYPE_DIRECTORY) {
         dir->hard_links++;
+
     }
     return write_data(dir, &entry, sizeof(struct entry), true);
 }

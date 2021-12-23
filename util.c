@@ -81,8 +81,9 @@ void parse_cmd(FILE* stream) {
 
     // handle the command with given args
     ret = handle_cmd(cmd, arg_idx, cmd_args);
+
     for (i = 0; i < arg_idx; ++i) {
-        free(cmd_args[arg_idx]);
+        free(cmd_args[i]);
     }
 
     switch (ret) {
@@ -143,7 +144,7 @@ void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir) {
         if (strlen(cpy) == 1) {
             *cur_dir = (struct entry) curr_dir;
             *prev_dir = (struct entry) curr_dir;
-            return;
+            goto free;
         }
         // skip "/"
         cpy++;
@@ -165,6 +166,7 @@ void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir) {
             break;
         }
     }
+    free:
     free(cpy_store);
 }
 

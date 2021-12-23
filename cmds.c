@@ -83,7 +83,9 @@ int ls(char* a[]) {
     for (i = 0; i < amount; ++i) {
         inode = inode_get(entries[i].inode_id);
         printf("%s%s\n", inode->file_type == FILE_TYPE_REGULAR_FILE ? "-" : "+", entries[i].item_name);
+        FREE(inode);
     }
+    FREE(entries);
     return CUSTOM_OUTPUT;
 }
 
@@ -97,6 +99,7 @@ int cat(char* s[]) {
     }
     arr = inode_get_contents(inode);
     printf("%s\n", arr);
+    FREE(arr);
     return CUSTOM_OUTPUT;
 }
 
@@ -136,6 +139,9 @@ int pwd(char* empt[]) {
 
     *prev = (node) {.next = NULL, .entry = (struct entry) {.inode_id = FS->curr_dir, .item_name = CURR_DIR}};
     dir.inode_id = 0;
+    parent = (struct entry) {.inode_id=0, .item_name=""};
+
+    // TODO free mallocs
     while (parent.inode_id != FS->root) {
         parse_dir(PREV_DIR, &dir, &parent);
         n = malloc(sizeof(node));

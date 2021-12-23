@@ -9,6 +9,7 @@
 #define MAX(a, b) (a) > (b) ? (a) : (b)
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 #define VALIDATE(ret) if (ret) return ret;
+#define FREE(m) if((m)) free((m));
 #define VALIDATE_MALLOC(data) if (!(data)){ \
 fprintf(stderr, "Ran out of memory!\n");                                          \
 exit(-1);                                          \

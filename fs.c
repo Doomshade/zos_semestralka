@@ -295,8 +295,7 @@ static int compare_entries(const void* aa, const void* bb) {
     return ret;
 }
 
-static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entries) {
-    struct entry* entries;
+static uint32_t get_dir_entries_(const struct inode* dir, struct entry* entries) {
     uint32_t remaining_bytes;
     uint32_t i, j;
     uint32_t max_read;
@@ -308,7 +307,6 @@ static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entrie
     }
 
     remaining_bytes = dir->file_size;
-    entries = malloc(dir->file_size);
     read = malloc(remaining_bytes * sizeof(uint8_t));
 
     index = 0;
@@ -317,7 +315,7 @@ static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entrie
             max_read = MIN(FS->sb->cluster_size, remaining_bytes);
             read_cluster(dir->direct[i], max_read, read, 0);
             for (j = 0; j < max_read / sizeof(struct entry); ++j) {
-                memcpy(&entries[index++], read + j * sizeof(struct entry), sizeof(struct entry));
+                memcpy(&(entries[index++]), read + j * sizeof(struct entry), sizeof(struct entry));
                 remaining_bytes -= sizeof(struct entry);
             }
         }
@@ -325,9 +323,6 @@ static uint32_t get_dir_entries_(const struct inode* dir, struct entry** _entrie
     FREE(read);
 
     // if an entry ptr is passed the call likely only wanted the amount of entries
-    if (_entries) {
-        *_entries = entries;
-    }
     return dir->file_size / sizeof(struct entry);
 }
 
@@ -339,7 +334,8 @@ static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME
     if (!dir) {
         return false;
     }
-    count = get_dir_entries_(dir, &entries);
+    entries = malloc(dir->file_size);
+    count = get_dir_entries_(dir, entries);
     for (i = 0; i < count; ++i) {
         if (entries[i].inode_id == FREE_INODE) {
             fprintf(stderr, "A null entry encountered, RIP\n");
@@ -510,7 +506,9 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
         return false;
     }
 
-    if (!(amount = get_dir_entries_(dir, &entries))) {
+    entries = malloc(dir->file_size);
+    if (!(amount = get_dir_entries_(dir, entries))) {
+        FREE(entries);
         return false;
     }
 
@@ -524,9 +522,11 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
             write_cluster(dir->direct[0], &entries[amount - 1], sizeof(struct entry),
                           i * sizeof(struct entry), true, false);
             dir->file_size -= sizeof(struct entry);
+            FREE(entries);
             return inode_write(dir);
         }
     }
+    FREE(entries);
     return false;
 }
 
@@ -560,6 +560,7 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], u
     }
     if (!CAN_ADD_ENTRY_TO_DIR(dir, name)) {
         fprintf(stderr, "Could not add an entry to a dir %u\n", dir_inode_id);
+        FREE(dir);
         return NULL;
     }
 
@@ -568,8 +569,10 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], u
     entry = (struct entry) {.inode_id = inode->id};
     strncpy(entry.item_name, name, MAX_FILENAME_LENGTH);
     if (!add_entry(dir, entry)) {
+        FREE(dir);
         return NULL;
     }
+    FREE(dir);
     return inode_write(inode) ? inode : NULL;
 }
 
@@ -669,8 +672,18 @@ static void read_indirect2(struct inode* inode, uint8_t* arr, uint32_t* size) {
 }
 
 uint32_t create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
-    struct inode* dir = create_empty_dir(inode_read(parent_dir_inode_id), name, false);
-    return dir ? dir->id : FREE_INODE;
+    uint32_t id = FREE_INODE;
+    struct inode* dir;
+    struct inode* parent;
+
+    parent = inode_read(parent_dir_inode_id);
+    dir = create_empty_dir(parent, name, false);
+    if (parent && dir) {
+        id = dir->id;
+    }
+    FREE(parent);
+    FREE(dir);
+    return id;
 }
 
 uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]) {
@@ -737,7 +750,12 @@ struct inode* inode_get(uint32_t inode_id) {
 
 bool inode_write_contents(uint32_t inode_id, void* ptr, uint32_t size) {
     struct inode* inode = inode_read(inode_id);
-    return inode && inode->file_type == FILE_TYPE_REGULAR_FILE && write_data(inode, ptr, size, false);
+    bool ret = false;
+    if (inode) {
+        ret = inode->file_type == FILE_TYPE_REGULAR_FILE && write_data(inode, ptr, size, false);
+        FREE(inode);
+    }
+    return ret;
 }
 
 uint8_t* inode_get_contents(uint32_t inode_id) {
@@ -768,14 +786,12 @@ uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
     if (!inode) {
         return FREE_INODE;
     }
-    for (i = 0; i < get_dir_entries_(inode, &entries); ++i) {
+    entries = malloc(inode->file_size);
+    for (i = 0; i < get_dir_entries_(inode, entries); ++i) {
         if (strcmp(entries[i].item_name, name) == 0) {
             id = entries[i].inode_id;
             break;
         }
-    }
-    if (entries){
-        printf("ENTRIES SIZE: %lu\n", sizeof(entries));
     }
     FREE(entries);
     FREE(inode);
@@ -786,8 +802,19 @@ bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
     return dir_has_entry_(inode_read(dir), name);
 }
 
-uint32_t get_dir_entries(uint32_t dir, struct entry** _entries) {
-    return get_dir_entries_(inode_read(dir), _entries);
+uint32_t get_dir_entries(uint32_t dir, struct entry** entries) {
+    struct inode* dirr;
+    uint32_t amount;
+
+    dirr = inode_read(dir);
+    if (!dirr) {
+        return 0;
+    }
+    *entries = malloc(dirr->file_size);
+    VALIDATE_MALLOC(*entries)
+    amount = get_dir_entries_(dirr, *entries);
+    FREE(dirr);
+    return amount;
 }
 
 void sort_entries(struct entry** entries, uint32_t size) {
@@ -795,15 +822,17 @@ void sort_entries(struct entry** entries, uint32_t size) {
 }
 
 bool get_dir_entry_id(uint32_t dir, struct entry* entry, uint32_t entry_id) {
-    struct entry* entries;
+    struct entry* entries = NULL;
     uint32_t i;
 
     for (i = 0; i < get_dir_entries(dir, &entries); ++i) {
         if (entries[i].inode_id == entry_id) {
             *entry = entries[i];
+            free(entries);
             return true;
         }
     }
+    free(entries);
     return false;
 }
 

@@ -14,10 +14,13 @@ if (dir.inode_id == FREE_INODE) {\
 return ERR_FILE_NOT_FOUND;\
 }
 
-#define VALIDATE_DIR(inode)\
-if ((inode) == FREE_INODE || inode_get((inode))->file_type != FILE_TYPE_DIRECTORY) {\
+#define VALIDATE_DIR(_inode) \
+struct inode* nnode = NULL;                            \
+if ((_inode) == FREE_INODE || (nnode = inode_get((_inode)))->file_type != FILE_TYPE_DIRECTORY) { \
+FREE(nnode);                            \
 return ERR_PATH_NOT_FOUND;\
-}
+}                           \
+FREE(nnode);
 
 int format(char* s[]) {
     uint32_t size;
@@ -122,6 +125,7 @@ typedef struct NODE {
 int pwd(char* empt[]) {
     node* n;
     node* prev;
+    node* copy;
     struct entry parent;
     struct entry dir;
     struct entry entry;
@@ -136,6 +140,7 @@ int pwd(char* empt[]) {
     curr_dir = FS->curr_dir;
     prev = malloc(sizeof(node));
     VALIDATE_MALLOC(prev)
+    copy = prev;
 
     *prev = (node) {.next = NULL, .entry = (struct entry) {.inode_id = FS->curr_dir, .item_name = CURR_DIR}};
     dir.inode_id = 0;
@@ -160,6 +165,11 @@ int pwd(char* empt[]) {
     while (strcmp(prev->entry.item_name, CURR_DIR) != 0) {
         printf("/%s", prev->entry.item_name);
         prev = prev->next;
+    }
+    while (copy) {
+        prev = copy;
+        copy = prev->next;
+        FREE(prev);
     }
     printf("\n");
     FS->curr_dir = curr_dir;

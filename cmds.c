@@ -6,6 +6,14 @@
 #include "cmd_handler.h"
 #include <stdlib.h>
 
+#define PARSE_PATHS(arr, amount) \
+uint32_t i;\
+struct entry child[amount];\
+struct entry parent[amount];     \
+for(i = 0; i < (amount); ++i){     \
+parse_dir((arr)[i], &parent[i], &child[i]);\
+}
+
 #define VALIDATE_DIR(_inode) \
 struct inode* nnode = NULL;                            \
 if ((_inode) == FREE_INODE || (nnode = inode_get((_inode)))->file_type != FILE_TYPE_DIRECTORY) { \
@@ -17,7 +25,6 @@ FREE(nnode);
 int format(char* s[]) {
     uint32_t size;
     size = parse(s[0]);
-    printf("%u\n", size);
     return fs_format(size) == 0 ? OK : ERR_CANNOT_CREATE_FILE;
 }
 
@@ -43,10 +50,11 @@ int cp(char* s[]) {
     }
 
     // check if the dir "to" exists
-    if (to_parent.inode_id == 0) {
+    if (to_parent.inode_id == FREE_INODE) {
         return ERR_PATH_NOT_FOUND;
     }
 
+    // check if the to_entry is a dir or a name
     // copy the contents
     arr = inode_get_contents(from_inode->id, &size);
     to_inode = create_file(to_parent.inode_id, to_entry.item_name);
@@ -134,6 +142,9 @@ int rmdir(char* a[]) {
     struct entry dir;
 
     parse_dir(a[0], &parent, &dir);
+    if (dir.inode_id == FREE_INODE) {
+        return ERR_FILE_NOT_FOUND;
+    }
     return remove_dir(parent.inode_id, dir.item_name) ? OK : ERR_NOT_EMPTY;
 }
 
@@ -280,7 +291,8 @@ int info(char* as[]) {
     if (!inode) {
         return ERR_FILE_NOT_FOUND;
     }
-    printf("/%s - %u - %u - [%u, %u, %u, %u, %u] - %u - %u\n", as[0], inode->file_size, inode->id,
+    printf("%s%s - %u - %u - [%u, %u, %u, %u, %u] - %u - %u\n", file.item_name,
+           (inode->file_type == FILE_TYPE_DIRECTORY ? "/" : ""), inode->file_size, inode->id,
            inode->direct[0], inode->direct[1], inode->direct[2], inode->direct[3], inode->direct[4],
            inode->indirect[0], inode->indirect[1]);
     return CUSTOM_OUTPUT;
@@ -311,7 +323,7 @@ int incp(char* s[]) {
     // it doesn't exist, means we create a new file with that name
     if (file_to.inode_id == FREE_INODE) {
         if ((inode_id = create_file(dir_to.inode_id, file_to.item_name)) == FREE_INODE) {
-            return ERR_UNKNOWN;
+            return ERR_EXIST;
         }
     }
         // the file does exist, check whether it's a directory or an already existing file
@@ -327,8 +339,9 @@ int incp(char* s[]) {
             case FILE_TYPE_REGULAR_FILE:
                 return ERR_EXIST;
             case FILE_TYPE_DIRECTORY:
+                // a file with that name could already exist
                 if ((inode_id = create_file(file_to.inode_id, file_from.item_name)) == FREE_INODE) {
-                    return ERR_UNKNOWN;
+                    return ERR_EXIST;
                 }
                 break;
             default:
@@ -350,17 +363,33 @@ int incp(char* s[]) {
 }
 
 int outcp(char* s[]) {
+    struct entry dir_from;
+    struct entry file_from;
+    struct entry dir_to;
+    struct entry file_to;
+
     FILE* f;
     uint32_t inode_id;
     uint8_t* arr;
     uint32_t size;
 
-    inode_id = inode_from_name(FS->curr_dir, s[0]);
+    parse_dir(s[0], &dir_from, &file_from);
+    parse_dir(s[1], &dir_to, &file_to);
+
+    if (file_from.inode_id == FREE_INODE) {
+        return ERR_FILE_NOT_FOUND;
+    }
+
+    inode_id = inode_from_name(dir_from.inode_id, file_from.item_name);
     if (!inode_id) {
         return ERR_FILE_NOT_FOUND;
     }
+
     arr = inode_get_contents(inode_id, &size);
     f = fopen(s[1], "w");
+    if (!f) {
+        return ERR_PATH_NOT_FOUND;
+    }
     rewind(f);
     fwrite(arr, size, 1, f);
     fflush(f);
@@ -377,9 +406,11 @@ int load(char* s[]) {
         return ERR_FILE_NOT_FOUND;
     }
 
+    printf("++++++++++\t%s\t++++++++++\n", s[0]);
     while (!feof(f)) {
         parse_cmd(f);
     }
+    printf("----------\t%s\t----------\n", s[0]);
     return OK;
 }
 

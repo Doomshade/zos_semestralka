@@ -573,7 +573,6 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], u
         return NULL;
     }
     if (!CAN_ADD_ENTRY_TO_DIR(dir, name)) {
-        fprintf(stderr, "Could not add an entry to a dir %u\n", dir_inode_id);
         FREE(dir);
         return NULL;
     }
@@ -786,7 +785,6 @@ uint8_t* inode_get_contents(uint32_t inode_id, uint32_t* size) {
 
     memset(arr, 0, inode->file_size + 1);
     *size = read_data(inode, arr);
-    printf("sizeof contents: %u\n", *size);
     return arr;
 }
 

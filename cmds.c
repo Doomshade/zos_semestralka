@@ -151,14 +151,12 @@ int mkdir(char* a[]) {
 }
 
 int rmdir(char* a[]) {
-    struct entry parent;
-    struct entry dir;
 
-    parse_dir(a[0], &parent, &dir);
-    if (dir.inode_id == FREE_INODE) {
+    PARSE_PATHS(a, 1)
+    if (child[0].inode_id == FREE_INODE) {
         return ERR_FILE_NOT_FOUND;
     }
-    return remove_dir(parent.inode_id, dir.item_name) ? OK : ERR_NOT_EMPTY;
+    return remove_dir(parent[0].inode_id, child[0].item_name) ? OK : ERR_NOT_EMPTY;
 }
 
 int ls(char* a[]) {

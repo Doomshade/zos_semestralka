@@ -10,6 +10,8 @@
 uint32_t i;\
 struct entry child[amount];\
 struct entry parent[amount];     \
+memset(parent, 0, sizeof(struct entry) * amount);                                 \
+memset(child, 0, sizeof(struct entry) * amount);                                 \
 for(i = 0; i < (amount); ++i){     \
 parse_dir((arr)[i], &parent[i], &child[i]);\
 }
@@ -29,38 +31,47 @@ int format(char* s[]) {
 }
 
 int cp(char* s[]) {
-    struct entry from_entry;
-    struct entry from_parent;
     struct inode* from_inode;
-    struct entry to_entry;
-    struct entry to_parent;
     uint32_t to_inode;
     bool success = false;
     uint8_t* arr;
     uint32_t size;
 
     // parse the "from" and "to" paths
-    parse_dir(s[0], &from_parent, &from_entry);
-    parse_dir(s[1], &to_parent, &to_entry);
+    PARSE_PATHS(s, 2)
 
     // check if the file "from" exists
-    from_inode = inode_get(from_entry.inode_id);
-    if (!from_inode) {
+    if (child[0].inode_id == FREE_INODE) {
         return ERR_FILE_NOT_FOUND;
     }
 
+    from_inode = inode_get(child[0].inode_id);
+    if (!from_inode) {
+        return ERR_UNKNOWN;
+    }
+
     // check if the dir "to" exists
-    if (to_parent.inode_id == FREE_INODE) {
+    if (parent[1].inode_id == FREE_INODE) {
         return ERR_PATH_NOT_FOUND;
     }
 
     // check if the to_entry is a dir or a name
     // copy the contents
     arr = inode_get_contents(from_inode->id, &size);
-    to_inode = create_file(to_parent.inode_id, to_entry.item_name);
 
-    // and then write them
+    // check if the child was non-existent
+    if (child[1].inode_id == FREE_INODE) {
+        to_inode = create_file(parent[1].inode_id, child[1].item_name);
+    } else {
+        to_inode = create_file(child[1].inode_id, child[0].item_name);
+
+        // the file could not be created because a file with that name already exist in that directory
+        if (to_inode == FREE_INODE) {
+            return ERR_EXIST;
+        }
+    }
     success = inode_write_contents(to_inode, arr, size);
+    // and then write them
     FREE(arr)
     return success ? OK : ERR_UNKNOWN;
 }

@@ -160,19 +160,16 @@ int rmdir(char* a[]) {
 }
 
 int ls(char* a[]) {
-    struct entry dir = EMPTY_ENTRY;
-    struct entry parent = EMPTY_ENTRY;
     struct entry* entries = NULL;
     struct inode* inode = NULL;
     uint32_t amount = 0;
-    uint32_t i = 0;
 
     // parse the input and check whether it's a directory
-    parse_dir(a[0], &parent, &dir);
-    VALIDATE_DIR(dir.inode_id)
+    PARSE_PATHS(a, 1)
+    VALIDATE_DIR(child[0].inode_id)
 
     // get the directory entries
-    entries = get_dir_entries(dir.inode_id, &amount);
+    entries = get_dir_entries(child[0].inode_id, &amount);
     if (!entries) {
         return ERR_UNKNOWN;
     }
@@ -190,17 +187,15 @@ int ls(char* a[]) {
 }
 
 int cat(char* s[]) {
-    struct entry file;
-    struct entry dir;
     uint32_t inode_id;
     struct inode* inode;
     uint8_t* arr;
     uint32_t size;
 
-    parse_dir(s[0], &dir, &file);
+    PARSE_PATHS(s, 1)
 
     // get the inode_id
-    inode_id = inode_from_name(dir.inode_id, file.item_name);
+    inode_id = inode_from_name(parent[0].inode_id, child[0].item_name);
     if (inode_id == FREE_INODE) {
         return ERR_FILE_NOT_FOUND;
     }
@@ -222,13 +217,10 @@ int cat(char* s[]) {
 }
 
 int cd(char* a[]) {
-    struct entry dir;
-    struct entry parent;
+    PARSE_PATHS(a, 1)
 
-    parse_dir(a[0], &parent, &dir);
-
-    VALIDATE_DIR(dir.inode_id)
-    FS->curr_dir = dir.inode_id;
+    VALIDATE_DIR(child[0].inode_id)
+    FS->curr_dir = child[0].inode_id;
     return OK;
 }
 
@@ -252,6 +244,7 @@ int pwd(char* empt[]) {
         printf("/\n");
         return CUSTOM_OUTPUT;
     }
+
     curr_dir = FS->curr_dir;
     prev = malloc(sizeof(node));
     VALIDATE_MALLOC(prev)

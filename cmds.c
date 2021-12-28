@@ -64,7 +64,7 @@ int cp(char* s[]) {
         to_inode = create_file(parent[1].inode_id, child[1].item_name);
     } else {
         to_inode = create_file(child[1].inode_id, child[0].item_name);
-        if (to_inode == FREE_INODE){
+        if (to_inode == FREE_INODE) {
             return ERR_EXIST;
         }
     }
@@ -116,29 +116,38 @@ int mv(char* s[]) {
 }
 
 int rm(char* s[]) {
-    struct entry file;
-    struct entry dir;
+    struct inode* inode;
 
-    parse_dir(s[0], &dir, &file);
-    return remove_entry(dir.inode_id, file.item_name) ? OK : ERR_FILE_NOT_FOUND;
+    PARSE_PATHS(s, 1)
+
+    if (child[0].inode_id == FREE_INODE) {
+        return ERR_FILE_NOT_FOUND;
+    }
+    inode = inode_get(child[0].inode_id);
+    if (!inode) {
+        return ERR_UNKNOWN;
+    }
+    if (inode->file_type != FILE_TYPE_REGULAR_FILE) {
+        return ERR_FILE_NOT_FOUND;
+    }
+    FREE(inode)
+    return remove_entry(parent[0].inode_id, child[0].item_name) ? OK : ERR_FILE_NOT_FOUND;
 }
 
 int mkdir(char* a[]) {
-    struct entry dir;
-    struct entry parent;
 
-    parse_dir(a[0], &parent, &dir);
+    PARSE_PATHS(a, 1)
 
     // if the parent dir doesn't exist, the path doesn't exist
-    if (parent.inode_id == FREE_INODE) {
+    if (parent[0].inode_id == FREE_INODE) {
         return ERR_PATH_NOT_FOUND;
     }
 
     // the dir already exists
-    if (dir.inode_id != FREE_INODE) {
+    if (child[0].inode_id != FREE_INODE) {
         return ERR_EXIST;
     }
-    return create_dir(parent.inode_id, dir.item_name) != FREE_INODE ? OK : ERR_UNKNOWN;
+    return create_dir(parent[0].inode_id, child[0].item_name) != FREE_INODE ? OK : ERR_UNKNOWN;
 }
 
 int rmdir(char* a[]) {

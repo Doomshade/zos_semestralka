@@ -64,9 +64,7 @@ int cp(char* s[]) {
         to_inode = create_file(parent[1].inode_id, child[1].item_name);
     } else {
         to_inode = create_file(child[1].inode_id, child[0].item_name);
-
-        // the file could not be created because a file with that name already exist in that directory
-        if (to_inode == FREE_INODE) {
+        if (to_inode == FREE_INODE){
             return ERR_EXIST;
         }
     }
@@ -110,15 +108,16 @@ int mv(char* s[]) {
     remove_entry(from_parent.inode_id, from_entry.item_name);
     new_entry = (struct entry) {.inode_id = from_entry.inode_id};
     // we are renaming the file
-    if (to_entry.inode_id == 0) {
+    if (to_entry.inode_id == FREE_INODE) {
         strncpy(new_entry.item_name, to_entry.item_name, MAX_FILENAME_LENGTH);
+        add_entry(to_parent.inode_id, new_entry);
     }
         // we are moving the file
     else {
         strncpy(new_entry.item_name, from_entry.item_name, MAX_FILENAME_LENGTH);
+        add_entry(to_entry.inode_id, new_entry);
     }
 
-    add_entry(to_parent.inode_id, new_entry);
     return OK;
 }
 

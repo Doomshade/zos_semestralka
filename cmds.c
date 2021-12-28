@@ -75,25 +75,19 @@ int cp(char* s[]) {
 }
 
 int mv(char* s[]) {
-    struct entry from_entry;
-    struct entry from_parent;
-    struct entry to_entry;
-    struct entry to_parent;
     struct entry new_entry;
     struct inode* inode;
 
     // parse the "from" and "to" dir/file
-    parse_dir(s[0], &from_parent, &from_entry);
-    parse_dir(s[1], &to_parent, &to_entry);
-
+    PARSE_PATHS(s, 2)
     // entry id 0  <==> the file is to be renamed or renamed and moved
     // entry id >0 <==> inode is a directory? -> the file is to be moved
     //                  inode is a file?      -> a file with that name already exists, don't move
-    if (to_entry.inode_id == FREE_INODE) {
+    if (child[1].inode_id == FREE_INODE) {
         goto cmd;
     }
 
-    inode = inode_get(to_entry.inode_id);
+    inode = inode_get(child[1].inode_id);
     if (!inode) {
         return ERR_UNKNOWN;
     }
@@ -105,17 +99,17 @@ int mv(char* s[]) {
     }
 
     cmd:
-    remove_entry(from_parent.inode_id, from_entry.item_name);
-    new_entry = (struct entry) {.inode_id = from_entry.inode_id};
+    remove_entry(parent[0].inode_id, child[0].item_name);
+    new_entry = (struct entry) {.inode_id = child[0].inode_id};
     // we are renaming the file
-    if (to_entry.inode_id == FREE_INODE) {
-        strncpy(new_entry.item_name, to_entry.item_name, MAX_FILENAME_LENGTH);
-        add_entry(to_parent.inode_id, new_entry);
+    if (child[1].inode_id == FREE_INODE) {
+        strncpy(new_entry.item_name, child[1].item_name, MAX_FILENAME_LENGTH);
+        add_entry(parent[1].inode_id, new_entry);
     }
         // we are moving the file
     else {
-        strncpy(new_entry.item_name, from_entry.item_name, MAX_FILENAME_LENGTH);
-        add_entry(to_entry.inode_id, new_entry);
+        strncpy(new_entry.item_name, child[0].item_name, MAX_FILENAME_LENGTH);
+        add_entry(child[1].inode_id, new_entry);
     }
 
     return OK;

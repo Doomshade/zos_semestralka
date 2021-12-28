@@ -135,10 +135,10 @@ bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
 /**
  * Retrieves the entries in the directory
  * @param dir the dir inode
- * @param _entries the entries array pointer
+ * @param amount the entries array pointer
  * @return the amount of entries
  */
-uint32_t get_dir_entries(uint32_t dir, struct entry** _entries);
+struct entry* get_dir_entries(uint32_t dir, uint32_t* amount);
 
 /**
  * Retrieves a directory entry based on the name
@@ -182,6 +182,26 @@ void sort_entries(struct entry** entries, uint32_t size);
  */
 bool inode_write_contents(uint32_t inode_id, void* ptr, uint32_t size);
 
-uint8_t* inode_get_contents(uint32_t inode);
+uint8_t* inode_get_contents(uint32_t inode_id, uint32_t* size);
+
+struct entry* get_entries(uint32_t dir);
+
+/**
+ * Adds an entry to the parent directory
+ * @param parent the parent directory inode ID
+ * @param entry the entry
+ * @return
+ */
+bool add_entry(uint32_t parent, struct entry entry);
+
+
+/**
+ * Removes an entry from the parent directory
+ * @param parent the parent directory inode ID
+ * @param entry_name the entry inode id
+ * @return
+ */
+bool remove_entry(uint32_t parent, const char entry_name[MAX_FILENAME_LENGTH]);
+
 
 #endif //ZOS_SEMESTRALKA_FS_H

@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include "fs.h"
 
+#define EMPTY_ENTRY (struct entry) {.inode_id = FREE_INODE, .item_name = ""}
 #define MAX(a, b) (a) > (b) ? (a) : (b)
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 #define VALIDATE(ret) if (ret) return ret;

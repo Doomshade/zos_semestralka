@@ -271,7 +271,6 @@ static int compare_entries(const void* aa, const void* bb) {
     struct inode* ia = inode_get(a->inode_id);
     struct inode* ib = inode_get(b->inode_id);
     int ret = INT32_MAX;
-    uint8_t ft;
 
     if (!ia || !ib) {
         return 0;
@@ -295,12 +294,13 @@ static int compare_entries(const void* aa, const void* bb) {
     return ret;
 }
 
-static uint32_t get_dir_entries_(const struct inode* dir, struct entry* entries) {
-    uint32_t remaining_bytes;
-    uint32_t i, j;
-    uint32_t max_read;
-    uint8_t* read;
-    uint32_t index;
+static struct entry* get_dir_entries_(const struct inode* dir, uint32_t* amount) {
+    uint32_t remaining_bytes = 0;
+    uint32_t i = 0, j = 0;
+    uint32_t max_read = 0;
+    uint8_t* read = 0;
+    uint32_t index = 0;
+    struct entry* entries = NULL;
 
     if (!dir) {
         return 0;
@@ -308,6 +308,9 @@ static uint32_t get_dir_entries_(const struct inode* dir, struct entry* entries)
 
     remaining_bytes = dir->file_size;
     read = malloc(remaining_bytes * sizeof(uint8_t));
+    VALIDATE_MALLOC(read)
+    entries = malloc(dir->file_size);
+    VALIDATE_MALLOC(entries)
 
     index = 0;
     while (remaining_bytes) {
@@ -322,24 +325,26 @@ static uint32_t get_dir_entries_(const struct inode* dir, struct entry* entries)
     }
     FREE(read);
 
-    // if an entry ptr is passed the call likely only wanted the amount of entries
-    return dir->file_size / sizeof(struct entry);
+    *amount = dir->file_size / sizeof(struct entry);
+    return entries;
 }
 
 static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
-    struct entry* entries;
-    uint32_t count;
-    uint32_t i;
+    struct entry* entries = NULL;
+    uint32_t count = 0;
+    uint32_t i = 0;
 
     if (!dir) {
         return false;
     }
-    entries = malloc(dir->file_size);
-    count = get_dir_entries_(dir, entries);
+    entries = get_dir_entries_(dir, &count);
+    if (!entries) {
+        return false;
+    }
     for (i = 0; i < count; ++i) {
         if (entries[i].inode_id == FREE_INODE) {
             fprintf(stderr, "A null entry encountered, RIP\n");
-            continue;
+            exit(1);
         }
         if (strncmp(name, entries[i].item_name, MAX_FILENAME_LENGTH) == 0) {
             FREE(entries);
@@ -351,10 +356,11 @@ static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME
 }
 
 static uint32_t read_recursive(uint32_t cluster, uint8_t* byte_arr, uint32_t size, uint32_t* curr_read, uint8_t rank) {
-    uint32_t i;
-    uint32_t buf[CLUSTER_SIZE / 4];
-    uint32_t read;
-    uint32_t total_read;
+    uint32_t i = 0;
+    uint32_t buf[CLUSTER_SIZE / 4] = {0};
+    uint32_t read = 0;
+    uint32_t total_read = 0;
+
     if (cluster == 0 || !byte_arr || rank > 2 || size == 0) {
         return 0;
     }
@@ -376,8 +382,8 @@ static uint32_t read_recursive(uint32_t cluster, uint8_t* byte_arr, uint32_t siz
 }
 
 static uint32_t read_data(struct inode* inode, uint8_t* byte_arr) {
-    uint32_t i;
-    uint32_t size;
+    uint32_t i = 0;
+    uint32_t size = 0;
     uint32_t curr_read = 0;
 
     size = inode->file_size;
@@ -400,6 +406,7 @@ static bool write_data(struct inode* inode, void* ptr, uint32_t size, bool appen
 
     if (!append) {
         inode->file_size = 0;
+        // TODO free all clusters
     }
     prev_size = inode->file_size;
     inode->file_size += size;
@@ -487,11 +494,14 @@ write_inode_cluster(struct inode* inode, void** ptr, uint32_t* size, uint32_t cl
     return cluster_out;
 }
 
-static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
-    struct entry* entries;
-    uint32_t i;
-    uint32_t amount;
-    uint8_t* zeroes;
+static bool remove_entry_(struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
+    struct entry* entries = NULL;
+    uint32_t i = 0;
+    uint32_t amount = 0;
+    bool success = false;
+
+    uint8_t* arr;
+    uint32_t size;
 
     if (!dir) {
         return false;
@@ -506,31 +516,35 @@ static bool remove_entry(struct inode* dir, const char name[MAX_FILENAME_LENGTH]
         return false;
     }
 
-    entries = malloc(dir->file_size);
-    if (!(amount = get_dir_entries_(dir, entries))) {
-        FREE(entries);
+    if (!(entries = get_dir_entries_(dir, &amount))) {
         return false;
     }
 
-    zeroes = malloc(sizeof(struct entry));
-    memset(zeroes, 0, sizeof(struct entry));
-
     for (i = 0; i < amount; ++i) {
         if (strncmp(entries[i].item_name, name, MAX_FILENAME_LENGTH) == 0) {
-            // found the entry, remove it and substitute it with the last entry in the list
-            // TODO check what cluster it actually is
-            write_cluster(dir->direct[0], &entries[amount - 1], sizeof(struct entry),
-                          i * sizeof(struct entry), true, false);
+            // copy the last "X = sizeof(entry)" bytes (should be 16) to the position found
+            // then reduce the size by "X" bytes
+            arr = inode_get_contents(dir->id, &size);
+
+            // copy the bytes
+            memcpy(arr + i * sizeof(struct entry), arr + (amount - 1) * sizeof(struct entry), sizeof(struct entry));
+
+            // reduce size
             dir->file_size -= sizeof(struct entry);
+
+            // write the data (overwrites everything)
+            success = write_data(dir, arr, dir->file_size, false);
+
+            FREE(arr)
             FREE(entries);
-            return inode_write(dir);
+            return success;
         }
     }
     FREE(entries);
     return false;
 }
 
-static bool add_entry(struct inode* dir, struct entry entry) {
+static bool add_entry_(struct inode* dir, struct entry entry) {
     struct inode* inode;
     if (!dir || !(CAN_ADD_ENTRY_TO_DIR(dir, entry.item_name))) {
         return false;
@@ -568,7 +582,7 @@ create_empty_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH], u
     inode->file_type = file_type;
     entry = (struct entry) {.inode_id = inode->id};
     strncpy(entry.item_name, name, MAX_FILENAME_LENGTH);
-    if (!add_entry(dir, entry)) {
+    if (!add_entry_(dir, entry)) {
         FREE(dir);
         return NULL;
     }
@@ -605,12 +619,12 @@ struct inode* create_empty_dir(struct inode* parent, const char name[MAX_FILENAM
     struct entry e_self = {dir->id, CURR_DIR};
     struct entry e_parent = {parent->id, PREV_DIR};
 
-    if (!add_entry(dir, e_self) || !add_entry(dir, e_parent)) {
+    if (!add_entry_(dir, e_self) || !add_entry_(dir, e_parent)) {
         //free_inode(dir);
         return NULL;
     }
     // don't add an entry to the parent if this is the root
-    if (!root && !add_entry(parent, this)) {
+    if (!root && !add_entry_(parent, this)) {
         //free_inode(dir);
         return NULL;
     }
@@ -758,7 +772,7 @@ bool inode_write_contents(uint32_t inode_id, void* ptr, uint32_t size) {
     return ret;
 }
 
-uint8_t* inode_get_contents(uint32_t inode_id) {
+uint8_t* inode_get_contents(uint32_t inode_id, uint32_t* size) {
     uint8_t* arr;
     struct inode* inode;
 
@@ -771,29 +785,36 @@ uint8_t* inode_get_contents(uint32_t inode_id) {
     VALIDATE_MALLOC(arr)
 
     memset(arr, 0, inode->file_size + 1);
-    printf("sizeof contents: %u\n", read_data(inode, arr));
+    *size = read_data(inode, arr);
+    printf("sizeof contents: %u\n", *size);
     return arr;
 }
 
 
 uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
-    struct entry* entries;
-    uint32_t i;
-    struct inode* inode;
+    struct entry* entries = NULL;
+    uint32_t i = 0;
+    struct inode* inode = NULL;
+    uint32_t amount = 0;
     uint32_t id = FREE_INODE;
 
     inode = inode_read(dir);
     if (!inode) {
         return FREE_INODE;
     }
-    entries = malloc(inode->file_size);
-    for (i = 0; i < get_dir_entries_(inode, entries); ++i) {
+
+    if (!(entries = get_dir_entries_(inode, &amount))) {
+        goto end;
+    }
+
+    for (i = 0; i < amount; ++i) {
         if (strcmp(entries[i].item_name, name) == 0) {
             id = entries[i].inode_id;
             break;
         }
     }
     FREE(entries);
+    end:
     FREE(inode);
     return id;
 }
@@ -802,57 +823,83 @@ bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
     return dir_has_entry_(inode_read(dir), name);
 }
 
-uint32_t get_dir_entries(uint32_t dir, struct entry** entries) {
-    struct inode* dirr;
-    uint32_t amount;
+struct entry* get_dir_entries(uint32_t dir, uint32_t* amount) {
+    struct inode* dirr = NULL;
+    struct entry* entries = NULL;
+
+    if (!amount) {
+        return NULL;
+    }
 
     dirr = inode_read(dir);
     if (!dirr) {
-        return 0;
+        return NULL;
     }
-    *entries = malloc(dirr->file_size);
-    VALIDATE_MALLOC(*entries)
-    amount = get_dir_entries_(dirr, *entries);
+
+    entries = get_dir_entries_(dirr, amount);
     FREE(dirr);
-    return amount;
+    return entries;
 }
 
 void sort_entries(struct entry** entries, uint32_t size) {
     qsort(*entries, size, sizeof(struct entry), compare_entries);
 }
 
-bool get_dir_entry_id(uint32_t dir, struct entry* entry, uint32_t entry_id) {
-    struct entry* entries = NULL;
-    uint32_t i;
+typedef bool entry_compare(const struct entry entry, const void* needle);
 
-    for (i = 0; i < get_dir_entries(dir, &entries); ++i) {
-        if (entries[i].inode_id == entry_id) {
+static bool get_dir_entry(uint32_t dir, struct entry* entry, const void* needle, entry_compare compare_func) {
+    uint32_t i = 0;
+    struct inode* diri = NULL;
+    struct entry* entries = NULL;
+    bool found = false;
+    uint32_t amount = 0;
+
+    diri = inode_read(dir);
+    if (!diri) {
+        return false;
+    }
+
+    if (!(entries = get_dir_entries(dir, &amount))) {
+        goto end;
+    }
+    for (i = 0; i < amount; ++i) {
+        if (compare_func(entries[i], needle)) {
+            found = true;
             *entry = entries[i];
-            free(entries);
-            return true;
+            break;
         }
     }
-    free(entries);
-    return false;
+
+    FREE(entries);
+    end:
+    FREE(diri);
+    return found;
+}
+
+
+static bool entry_compare_name(const struct entry entry, const void* needle) {
+    const char* name = (char*) needle;
+    return strncmp(entry.item_name, name, MAX_FILENAME_LENGTH) == 0;
+}
+
+static bool entry_compare_id(const struct entry entry, const void* needle) {
+    const uint32_t entry_id = *((uint32_t*) needle);
+    return entry.inode_id == entry_id;
+}
+
+bool get_dir_entry_id(uint32_t dir, struct entry* entry, uint32_t entry_id) {
+    return get_dir_entry(dir, entry, &entry_id, entry_compare_id);
 }
 
 bool get_dir_entry_name(uint32_t dir, struct entry* entry, const char name[MAX_FILENAME_LENGTH]) {
-    struct entry* entries;
-    uint32_t i;
-
-    for (i = 0; i < get_dir_entries(dir, &entries); ++i) {
-        if (strncmp(entries[i].item_name, name, MAX_FILENAME_LENGTH) == 0) {
-            *entry = entries[i];
-            return true;
-        }
-    }
-    return false;
+    return get_dir_entry(dir, entry, name, entry_compare_name);
 }
 
 bool remove_dir(uint32_t dir, const char dir_name[MAX_FILENAME_LENGTH]) {
-    struct inode* diri;
-    struct entry subdire;
-
+    struct inode* diri = NULL;
+    struct entry subdire = (struct entry) {.inode_id = FREE_INODE, .item_name = ""};
+    struct entry* entries = NULL;
+    uint32_t amount = 0;
 
     diri = inode_read(dir);
     // the directory or the subdirectory does not exist
@@ -861,14 +908,40 @@ bool remove_dir(uint32_t dir, const char dir_name[MAX_FILENAME_LENGTH]) {
     }
 
     // the subdirectory has too many entries
-    if (get_dir_entries(subdire.inode_id, NULL) != 2) {
+    entries = get_dir_entries(subdire.inode_id, &amount);
+    if (amount != 2) {
+        FREE(entries);
         return false;
     }
-    return remove_entry(diri, dir_name);
+    FREE(entries);
+    return remove_entry_(diri, dir_name);
+}
+
+bool add_entry(uint32_t parent, struct entry entry) {
+    bool added;
+    struct inode* inode;
+
+    if (strncmp(entry.item_name, "/", 1) == 0) {
+        return false;
+    }
+    inode = inode_read(parent);
+    added = add_entry_(inode, entry);
+    FREE(inode);
+    return added;
+}
+
+bool remove_entry(uint32_t parent, const char entry_name[MAX_FILENAME_LENGTH]) {
+    bool removed;
+    struct inode* inode;
+
+    inode = inode_read(parent);
+    removed = remove_entry_(inode, entry_name);
+    FREE(inode);
+    return removed;
 }
 
 void test() {
-    int i;
+    /*int i;
     uint64_t a;
     const char* kuba[] = {"Kuba", "je", "god"};
     struct inode* root;
@@ -884,9 +957,9 @@ void test() {
     for (i = 0; i < 3; ++i) {
         struct entry entry = {inode_id};
         strncpy(entry.item_name, kuba[i], MAX_FILENAME_LENGTH);
-        add_entry(root, entry);
+        add_entry_(root, entry);
     }
-    FREE(root);
+    FREE(root);*/
 }
 
 #pragma clang diagnostic pop

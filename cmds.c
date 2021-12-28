@@ -285,17 +285,15 @@ int pwd(char* empt[]) {
 }
 
 int info(char* as[]) {
-    struct entry file;
-    struct entry dir;
     struct inode* inode;
 
-    parse_dir(as[0], &dir, &file);
-
-    inode = inode_get(inode_from_name(dir.inode_id, file.item_name));
+    PARSE_PATHS(as, 1)
+    inode = inode_get(inode_from_name(parent[0].inode_id, child[0].item_name));
     if (!inode) {
         return ERR_FILE_NOT_FOUND;
     }
-    printf("%s%s - %u - %u - [%u, %u, %u, %u, %u] - %u - %u\n", file.item_name,
+
+    printf("%s%s - %u - %u - [%u, %u, %u, %u, %u] - %u - %u\n", child[0].item_name,
            (inode->file_type == FILE_TYPE_DIRECTORY ? "/" : ""), inode->file_size, inode->id,
            inode->direct[0], inode->direct[1], inode->direct[2], inode->direct[3], inode->direct[4],
            inode->indirect[0], inode->indirect[1]);

@@ -301,10 +301,6 @@ int info(char* as[]) {
 }
 
 int incp(char* s[]) {
-    struct entry dir_from;
-    struct entry file_from;
-    struct entry dir_to;
-    struct entry file_to;
 
     FILE* f = NULL;
     uint32_t inode_id = 0;
@@ -318,19 +314,18 @@ int incp(char* s[]) {
         return ERR_FILE_NOT_FOUND;
     }
 
-    parse_dir(s[0], &dir_from, &file_from);
-    parse_dir(s[1], &dir_to, &file_to);
+    PARSE_PATHS(s, 2)
 
     // now we need to check whether "file_to" is a directory or nonexistent
     // it doesn't exist, means we create a new file with that name
-    if (file_to.inode_id == FREE_INODE) {
-        if ((inode_id = create_file(dir_to.inode_id, file_to.item_name)) == FREE_INODE) {
+    if (child[1].inode_id == FREE_INODE) {
+        if ((inode_id = create_file(parent[1].inode_id, child[1].item_name)) == FREE_INODE) {
             return ERR_EXIST;
         }
     }
         // the file does exist, check whether it's a directory or an already existing file
     else {
-        inode = inode_get(file_to.inode_id);
+        inode = inode_get(child[1].inode_id);
         if (!inode) {
             return ERR_UNKNOWN;
         }
@@ -342,7 +337,7 @@ int incp(char* s[]) {
                 return ERR_EXIST;
             case FILE_TYPE_DIRECTORY:
                 // a file with that name could already exist
-                if ((inode_id = create_file(file_to.inode_id, file_from.item_name)) == FREE_INODE) {
+                if ((inode_id = create_file(child[1].inode_id, child[0].item_name)) == FREE_INODE) {
                     return ERR_EXIST;
                 }
                 break;
@@ -365,24 +360,17 @@ int incp(char* s[]) {
 }
 
 int outcp(char* s[]) {
-    struct entry dir_from;
-    struct entry file_from;
-    struct entry dir_to;
-    struct entry file_to;
-
     FILE* f;
     uint32_t inode_id;
     uint8_t* arr;
     uint32_t size;
 
-    parse_dir(s[0], &dir_from, &file_from);
-    parse_dir(s[1], &dir_to, &file_to);
-
-    if (file_from.inode_id == FREE_INODE) {
+    PARSE_PATHS(s, 2)
+    if (child[0].inode_id == FREE_INODE) {
         return ERR_FILE_NOT_FOUND;
     }
 
-    inode_id = inode_from_name(dir_from.inode_id, file_from.item_name);
+    inode_id = inode_from_name(parent[0].inode_id, child[0].item_name);
     if (!inode_id) {
         return ERR_FILE_NOT_FOUND;
     }
@@ -457,16 +445,14 @@ int xcp(char* s[]) {
 #define SHORT_SIZE 5000
 
 int short_cmd(char* s[]) {
-    struct entry file;
-    struct entry dir;
     struct inode* inode;
     bool success = true;
     uint8_t* arr;
     uint32_t size;
 
     // parse the file and get the inode
-    parse_dir(s[0], &dir, &file);
-    inode = inode_get(file.inode_id);
+    PARSE_PATHS(s, 1)
+    inode = inode_get(child[0].inode_id);
     if (!inode) {
         return ERR_FILE_NOT_FOUND;
     }

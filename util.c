@@ -5,6 +5,17 @@
 #include "fs.h"
 #include "cmd_handler.h"
 
+/**
+ * Retrieves a directory entry based on the name
+ * @param dir the dir inode
+ * @param entry the entry pointer
+ * @param property the property looked for in an entry
+ * @param compare_func should return the first entry that has the given property
+ * @return true if found, false otherwise
+ */
+static bool get_dir_entry(uint32_t dir, struct entry* entry, const void* property, entry_compare compare_func);
+
+
 void remove_nl(char* s) {
     s[strcspn(s, "\n")] = 0;
 }
@@ -123,6 +134,131 @@ void parse_cmd(FILE* stream) {
             printf("An unknown error occurred\n");
             break;
     }
+}
+
+static int compare_entries(const void* aa, const void* bb) {
+    struct entry* a = (struct entry*) aa;
+    struct entry* b = (struct entry*) bb;
+    struct inode* ia = inode_read(a->inode_id);
+    struct inode* ib = inode_read(b->inode_id);
+    int ret = INT32_MAX;
+
+    if (!ia || !ib) {
+        return 0;
+    }
+
+    if (strcmp(a->item_name, CURR_DIR) == 0) {
+        ret = -1;
+    } else if (strcmp(b->item_name, CURR_DIR) == 0) {
+        ret = 1;
+    } else if (strcmp(a->item_name, PREV_DIR) == 0) {
+        ret = -1;
+    } else if (strcmp(b->item_name, PREV_DIR) == 0) {
+        ret = 1;
+    } else if (ia->file_type ^ ib->file_type) {
+        ret = ia->file_type == FILE_TYPE_DIRECTORY ? -1 : 1;
+    } else {
+        ret = strcmp(a->item_name, b->item_name);
+    }
+    FREE(ia);
+    FREE(ib);
+    return ret;
+}
+
+
+static bool entry_compare_name(const struct entry entry, const void* needle) {
+    const char* name = (char*) needle;
+    return strncmp(entry.item_name, name, MAX_FILENAME_LENGTH) == 0;
+}
+
+static bool entry_compare_id(const struct entry entry, const void* needle) {
+    const uint32_t entry_id = *((uint32_t*) needle);
+    return entry.inode_id == entry_id;
+}
+
+static bool get_dir_entry(uint32_t dir, struct entry* entry, const void* property, entry_compare compare_func) {
+    uint32_t i = 0;
+    struct inode* diri = NULL;
+    struct entry* entries = NULL;
+    bool found = false;
+    uint32_t amount = 0;
+
+    diri = inode_read(dir);
+    if (!diri) {
+        return false;
+    }
+
+    if (!(entries = get_dir_entries(dir, &amount))) {
+        goto end;
+    }
+    for (i = 0; i < amount; ++i) {
+        if (compare_func(entries[i], property)) {
+            found = true;
+            *entry = entries[i];
+            break;
+        }
+    }
+
+    FREE(entries);
+    end:
+    FREE(diri);
+    return found;
+}
+
+bool get_dir_entry_id(uint32_t dir, struct entry* entry, uint32_t entry_id) {
+    return get_dir_entry(dir, entry, &entry_id, entry_compare_id);
+}
+
+bool get_dir_entry_name(uint32_t dir, struct entry* entry, const char name[MAX_FILENAME_LENGTH]) {
+    return get_dir_entry(dir, entry, name, entry_compare_name);
+}
+
+void sort_entries(struct entry** entries, uint32_t size) {
+    qsort(*entries, size, sizeof(struct entry), compare_entries);
+}
+
+bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
+    struct entry* entries = NULL;
+    uint32_t count = 0;
+    uint32_t i = 0;
+
+    entries = get_dir_entries(dir, &count);
+    if (!entries) {
+        return false;
+    }
+    for (i = 0; i < count; ++i) {
+        if (entries[i].inode_id == FREE_INODE) {
+            fprintf(stderr, "A null entry encountered, RIP\n");
+            exit(1);
+        }
+        if (strncmp(name, entries[i].item_name, MAX_FILENAME_LENGTH) == 0) {
+            FREE(entries);
+            return true;
+        }
+    }
+    FREE(entries);
+    return false;
+}
+
+uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]) {
+    struct entry* entries = NULL;
+    uint32_t i = 0;
+    uint32_t amount = 0;
+    uint32_t id = FREE_INODE;
+
+    if (!(entries = get_dir_entries(dir, &amount))) {
+        goto end;
+    }
+
+    for (i = 0; i < amount; ++i) {
+        if (strcmp(entries[i].item_name, name) == 0) {
+            id = entries[i].inode_id;
+            break;
+        }
+    }
+    FREE(entries);
+    end:
+    return id;
 }
 
 void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir) {

@@ -15,13 +15,6 @@
 bool find_free_spots(uint32_t bm_start_addr, uint32_t bm_end_addr, uint32_t* arr);
 
 /**
- * Frees the cluster by zeroing it and flipping bit in the data bitmap to 0
- * @param cluster_id the cluster id
- * @return 0
- */
-bool free_cluster(uint32_t cluster_id);
-
-/**
  * Checks whether a file with some name exists
  * @param filename the file name
  * @return 0
@@ -69,5 +62,13 @@ uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr,
 uint32_t
 write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bool as_data_cluster,
               bool override);
+
+
+/**
+ * Frees the cluster by zeroing it and flipping bit in the data bitmap to 0
+ * @param cluster_id the cluster id
+ * @return 0
+ */
+bool free_cluster(uint32_t cluster_id);
 
 #endif //ZOS_SEMESTRALKA_IO_H

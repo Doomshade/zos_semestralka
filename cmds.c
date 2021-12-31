@@ -10,15 +10,15 @@
 uint32_t i;\
 struct entry child[amount];\
 struct entry parent[amount];     \
-memset(parent, 0, sizeof(struct entry) * amount);                                 \
-memset(child, 0, sizeof(struct entry) * amount);                                 \
+memset(parent, 0, sizeof(struct entry) * (amount));                                 \
+memset(child, 0, sizeof(struct entry) * (amount));                                 \
 for(i = 0; i < (amount); ++i){     \
 parse_dir((arr)[i], &parent[i], &child[i]);\
 }
 
 #define VALIDATE_DIR(_inode) \
 struct inode* nnode = NULL;                            \
-if ((_inode) == FREE_INODE || (nnode = inode_get((_inode)))->file_type != FILE_TYPE_DIRECTORY) { \
+if ((_inode) == FREE_INODE || (nnode = inode_read((_inode)))->file_type != FILE_TYPE_DIRECTORY) { \
 FREE(nnode);                            \
 return ERR_PATH_NOT_FOUND;\
 }                           \
@@ -45,7 +45,7 @@ int cp(char* s[]) {
         return ERR_FILE_NOT_FOUND;
     }
 
-    from_inode = inode_get(child[0].inode_id);
+    from_inode = inode_read(child[0].inode_id);
     if (!from_inode) {
         return ERR_UNKNOWN;
     }
@@ -87,7 +87,7 @@ int mv(char* s[]) {
         goto cmd;
     }
 
-    inode = inode_get(child[1].inode_id);
+    inode = inode_read(child[1].inode_id);
     if (!inode) {
         return ERR_UNKNOWN;
     }
@@ -123,7 +123,7 @@ int rm(char* s[]) {
     if (child[0].inode_id == FREE_INODE) {
         return ERR_FILE_NOT_FOUND;
     }
-    inode = inode_get(child[0].inode_id);
+    inode = inode_read(child[0].inode_id);
     if (!inode) {
         return ERR_UNKNOWN;
     }
@@ -178,7 +178,7 @@ int ls(char* a[]) {
 
     // print each entry
     for (i = 0; i < amount; ++i) {
-        inode = inode_get(entries[i].inode_id);
+        inode = inode_read(entries[i].inode_id);
         printf("%s%s\n", inode->file_type == FILE_TYPE_REGULAR_FILE ? "-" : "+", entries[i].item_name);
         FREE(inode);
     }
@@ -200,7 +200,7 @@ int cat(char* s[]) {
         return ERR_FILE_NOT_FOUND;
     }
 
-    inode = inode_get(inode_id);
+    inode = inode_read(inode_id);
     if (!inode) {
         return ERR_UNKNOWN;
     }
@@ -288,7 +288,7 @@ int info(char* as[]) {
     struct inode* inode;
 
     PARSE_PATHS(as, 1)
-    inode = inode_get(inode_from_name(parent[0].inode_id, child[0].item_name));
+    inode = inode_read(inode_from_name(parent[0].inode_id, child[0].item_name));
     if (!inode) {
         return ERR_FILE_NOT_FOUND;
     }
@@ -325,7 +325,7 @@ int incp(char* s[]) {
     }
         // the file does exist, check whether it's a directory or an already existing file
     else {
-        inode = inode_get(child[1].inode_id);
+        inode = inode_read(child[1].inode_id);
         if (!inode) {
             return ERR_UNKNOWN;
         }
@@ -452,7 +452,7 @@ int short_cmd(char* s[]) {
 
     // parse the file and get the inode
     PARSE_PATHS(s, 1)
-    inode = inode_get(child[0].inode_id);
+    inode = inode_read(child[0].inode_id);
     if (!inode) {
         return ERR_FILE_NOT_FOUND;
     }

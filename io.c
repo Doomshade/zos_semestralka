@@ -77,7 +77,7 @@ uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr,
 
 bool free_cluster(uint32_t cluster_id) {
     if (cluster_id == FREE_CLUSTER) {
-        return true;
+        return false;
     }
     if (set_bit(FS->sb->data_bm_start_addr, TO_DATA_CLUSTER(cluster_id), false)) {
         FS->sb->free_cluster_count++;

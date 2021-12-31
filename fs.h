@@ -41,9 +41,7 @@ struct superblock {
     uint32_t data_bm_start_addr;    // the data bitmap addr
     uint32_t inode_start_addr;      // the addr of the first inode
     uint32_t data_start_addr;       // the addr of the first data
-
     uint8_t inode_size;             // the size of an inode
-    uint32_t first_ino;             // first non-reserved inode_id
 };
 
 
@@ -54,7 +52,7 @@ struct inode {
     uint32_t file_size;     // file size in bytes
     uint32_t direct[DIRECT_AMOUNT];     // 5 direct accesses to clusters
     uint32_t indirect[INDIRECT_AMOUNT];   // two indirect - one 1st rank and one 2nd rank
-    uint32_t padding[6];    // padding to reach 64 bytes
+    const uint32_t padding[6];    // padding to reach 64 bytes
 };
 
 
@@ -75,9 +73,6 @@ struct fs {
     uint32_t root;
     uint32_t curr_dir;
 };
-
-void test();
-
 
 /**
  * Formats the disk with the given disk size
@@ -111,26 +106,10 @@ uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]
 
 /**
  *
- * @param dir the directory
- * @param name the file/dir name
- * @return the inode ID
- */
-uint32_t inode_from_name(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
-
-/**
- *
  * @param inode_id the inode ID
  * @return the state of an inode on disk
  */
-struct inode* inode_get(uint32_t inode_id);
-
-/**
- * Checks whether the directory with the inode has an entry with some name
- * @param dir the dir inode id
- * @param name the name
- * @return true if it has, false otherwise
- */
-bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
+struct inode* inode_read(uint32_t inode_id);
 
 /**
  * Retrieves the entries in the directory
@@ -141,37 +120,17 @@ bool dir_has_entry(uint32_t dir, const char name[MAX_FILENAME_LENGTH]);
 struct entry* get_dir_entries(uint32_t dir, uint32_t* amount);
 
 /**
- * Retrieves a directory entry based on the name
- * @param dir the dir inode
- * @param entry the entry pointer
- * @param entry_id the entry inode id
- * @return true if found, false otherwise
+ * The comparison function for getting an entry
  */
-bool get_dir_entry_id(uint32_t dir, struct entry* entry, uint32_t entry_id);
+typedef bool entry_compare(const struct entry entry, const void* needle);
 
 /**
- * Retrieves a directory entry based on the name
- * @param dir the dir inode
- * @param entry the entry pointer
- * @param name the entry name
- * @return true if found, false otherwise
- */
-bool get_dir_entry_name(uint32_t dir, struct entry* entry, const char name[MAX_FILENAME_LENGTH]);
-
-/**
- * Removes a
- * @param dir
- * @param dir_name
+ * Removes a directory
+ * @param parent the parent directory inode id
+ * @param dir_name the directory name
  * @return
  */
-bool remove_dir(uint32_t dir, const char dir_name[MAX_FILENAME_LENGTH]);
-
-/**
- * Sorts the entries
- * @param entries the entries
- * @param size the amount of entries
- */
-void sort_entries(struct entry** entries, uint32_t size);
+bool remove_dir(uint32_t parent, const char dir_name[MAX_FILENAME_LENGTH]);
 
 /**
  * Writes contents to a file
@@ -182,9 +141,13 @@ void sort_entries(struct entry** entries, uint32_t size);
  */
 bool inode_write_contents(uint32_t inode_id, void* ptr, uint32_t size);
 
+/**
+ * Returns an array of file contents
+ * @param inode_id the inode id
+ * @param size the pointer to size
+ * @return the array of file contents
+ */
 uint8_t* inode_get_contents(uint32_t inode_id, uint32_t* size);
-
-struct entry* get_entries(uint32_t dir);
 
 /**
  * Adds an entry to the parent directory

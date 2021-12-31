@@ -70,7 +70,7 @@ static bool load_file(FILE* f);
  * @param filename the file name
  * @return
  */
-static bool load_fs_from_file(const char* filename);
+static bool load_fs_from_file();
 
 /**
  * Initializes the superblock with the given disk size and
@@ -100,9 +100,20 @@ static bool load_file(FILE* f) {
     return 0;
 }
 
-static bool load_fs_from_file(const char* filename) {
+static bool load_fs_from_file() {
+    struct superblock* sb;
     FILE* f;
+    uint8_t* arr;
     VALIDATE(load_file(f = fopen(FS->filename, "rb+")))
+    arr = read_superblock();
+    sb = malloc(sizeof(struct superblock));
+    VALIDATE_MALLOC(sb)
+    memcpy(sb, arr, sizeof(struct superblock));
+    FS->root = 1;
+    FS->curr_dir = FS->root;
+    FS->sb = sb;
+    FS->fmt = true;
+    FREE(arr);
     return 0;
 }
 
@@ -200,7 +211,6 @@ static bool inode_write(struct inode* inode) {
     SEEK_INODE(inode->id)
     fwrite(inode, FS->sb->inode_size, 1, FS->file);
     fflush(FS->file);
-
     return true;
 }
 
@@ -560,7 +570,7 @@ int init_fs(char* filename) {
 
     // if the file exists, attempt to load the FS from the file
     if (fexists(filename)) {
-        return load_fs_from_file(filename);
+        return load_fs_from_file();
     }
     return 0;
 }

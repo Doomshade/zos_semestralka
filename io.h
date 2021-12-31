@@ -71,4 +71,6 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
  */
 bool free_cluster(uint32_t cluster_id);
 
+uint8_t* read_superblock();
+
 #endif //ZOS_SEMESTRALKA_IO_H

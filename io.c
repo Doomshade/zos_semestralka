@@ -64,6 +64,14 @@ bool fexists(const char* filename) {
     return stat(filename, &s) == 0;
 }
 
+uint8_t* read_superblock() {
+    uint8_t* arr;
+    arr = malloc(CLUSTER_SIZE);
+    fseek(FS->file, 0, SEEK_SET);
+    fread(arr, CLUSTER_SIZE, 1, FS->file);
+    return arr;
+}
+
 uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr, uint32_t offset) {
     if (cluster == 0) {
         return 0;

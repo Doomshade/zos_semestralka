@@ -30,6 +30,7 @@ void print_cmd(char* cmd) {
     int i;
     CMD c;
 
+    // just loop through the commands and look for the right one
     for (i = 0; i < CMD_COUNT; ++i) {
         c = cmds[i];
         if (strcmp(c.cmd_name, cmd) == 0) {
@@ -40,7 +41,6 @@ void print_cmd(char* cmd) {
 }
 
 static void register_cmd(handle* h, const char* cmd, int argc, const char* help, int idx) {
-
     CMD c = {h, cmd, argc, help};
     cmds[idx] = c;
 }
@@ -48,18 +48,18 @@ static void register_cmd(handle* h, const char* cmd, int argc, const char* help,
 void register_handlers() {
     int idx = 0;
 
-    register_cmd(cp, "cp", 2, "Zkopíruje soubor s1 do umístění s2", idx++); // TODO
-    register_cmd(mv, "mv", 2, "Přesune soubor s1 do umístění s2, nebo přejmenuje s1 na s2", idx++); // TODO
-    register_cmd(rm, "rm", 1, "Smaže soubor s1", idx++); // TODO
+    register_cmd(cp, "cp", 2, "Zkopíruje soubor s1 do umístění s2", idx++); // DONE
+    register_cmd(mv, "mv", 2, "Přesune soubor s1 do umístění s2, nebo přejmenuje s1 na s2", idx++); // DONE
+    register_cmd(rm, "rm", 1, "Smaže soubor s1", idx++); // DONE
     register_cmd(mkdir, "mkdir", 1, "Vytvoří adresář a1", idx++); // DONE
-    register_cmd(rmdir, "rmdir", 1, "Smaže prázdný adresář a1", idx++); // TODO
+    register_cmd(rmdir, "rmdir", 1, "Smaže prázdný adresář a1", idx++); // DONE
     register_cmd(ls, "ls", 1, "Vypíše obsah adresáře a1", idx++); // DONE
-    register_cmd(cat, "cat", 1, "Vypíše obsah souboru s1", idx++); // TODO
+    register_cmd(cat, "cat", 1, "Vypíše obsah souboru s1", idx++); // DONE
     register_cmd(cd, "cd", 1, "Změní aktuální cestu do adresáře a1", idx++); // DONE
     register_cmd(pwd, "pwd", 0, "Vypíše aktuální cestu", idx++); // DONE
-    register_cmd(info, "info", 1, "Vypíše informace o souboru/adresáři s1/a1 (v jakých clusterech se nachází)", idx++); // TODO
-    register_cmd(incp, "incp", 2, "Nahraje soubor s1 z pevného disku do umístění s2 ve vašem FS", idx++); // TODO
-    register_cmd(outcp, "outcp", 2, "Nahraje soubor s1 z vašeho FS do umístění s2 na pevném disku", idx++); // TODO
+    register_cmd(info, "info", 1, "Vypíše informace o souboru/adresáři s1/a1 (v jakých clusterech se nachází)", idx++); // DONE
+    register_cmd(incp, "incp", 2, "Nahraje soubor s1 z pevného disku do umístění s2 ve vašem FS", idx++); // DONE
+    register_cmd(outcp, "outcp", 2, "Nahraje soubor s1 z vašeho FS do umístění s2 na pevném disku", idx++); // DONE
     register_cmd(load, "load", 1,
                  "Načte soubor z pevného disku, ve kterém budou jednotlivé příkazy, a začne je sekvenčně\n"
                  "vykonávat. Formát je 1 příkaz/1řádek", idx++); // DONE
@@ -67,8 +67,8 @@ void register_handlers() {
                  "Příkaz provede formát souboru, který byl zadán jako parametr při spuštení programu na\n"
                  "souborový systém dané velikosti. Pokud už soubor nějaká data obsahoval, budou přemazána.\n"
                  "Pokud soubor neexistoval, bude vytvořen.", idx++); // DONE
-    register_cmd(xcp, "xcp", 3, "Vytvoří soubor s3, který bude spojením souborů s1 a s2.", idx++); // TODO
-    register_cmd(short_cmd, "short", 1, "Pokud je s1 větší než 5000 bytů, zkrátí jej na 5000 bytů", idx++); // TODO
+    register_cmd(xcp, "xcp", 3, "Vytvoří soubor s3, který bude spojením souborů s1 a s2.", idx++); // DONE
+    register_cmd(short_cmd, "short", 1, "Pokud je s1 větší než 5000 bytů, zkrátí jej na 5000 bytů", idx++); // DONE
 }
 
 int handle_cmd(char* cmd, int argc, char* argv[]) {
@@ -78,21 +78,28 @@ int handle_cmd(char* cmd, int argc, char* argv[]) {
         return CMD_NOT_FOUND;
     }
 
+    // check for arg count
     for (i = 0; i < argc; ++i) {
         if (strcmp(argv[i], "") == 0) {
             return INVALID_ARG_AMOUNT;
         }
     }
 
+    // loop through available commands
     for (i = 0; i < CMD_COUNT; ++i) {
         CMD c = cmds[i];
         if (strcmp(cmd, c.cmd_name) == 0) {
+            // the command does not have the required amount of arguments
             if (c.argc != argc) {
                 return INVALID_ARG_AMOUNT;
             }
+
+            // the FS needs to be formatted prior to the call of many commands
             if (c.handle != format && c.handle != load && !FS->fmt) {
                 return FS_NOT_YET_FORMATTED;
             }
+
+            // everything okay, let the command handle the request
             return c.handle(argv);
         }
     }

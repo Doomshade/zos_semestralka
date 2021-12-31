@@ -16,7 +16,6 @@
 #define CAN_ADD_ENTRY_TO_DIR(dir, entry_name) ((dir)->file_type == FILE_TYPE_DIRECTORY && !dir_has_entry((dir), (entry_name)))
 #define FREE_CLUSTER 0
 
-
 #define BE_BIT(bit) (1 << (7 - ((bit) % 8)))
 
 // seek at the start of the bitmap

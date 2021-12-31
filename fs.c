@@ -17,21 +17,10 @@
 #define ALIGNED_DOWN(num, to) ((num) % (to) == 0 ? (num) : ALIGNED_UP((num), (to)) - (to))
 #define ALIGN_UP(num, to) (num) = ALIGNED_UP((num), (to));
 #define ALIGN_DOWN(num, to) (num) = ALIGNED_DOWN((num), (to));
-#define SEEK_CLUSTER(cluster) fseek(FS->file, (cluster) * FS->sb->cluster_size, SEEK_SET);
-#define TO_DATA_CLUSTER(cluster) (((cluster) - 1) + FS->sb->data_start_addr / FS->sb->cluster_size)
-#define CAN_ADD_ENTRY_TO_DIR(dir, entry_name) ((dir)->file_type == FILE_TYPE_DIRECTORY && !dir_has_entry_((dir), (entry_name)))
-
-#define BE_BIT(bit) (1 << (7 - ((bit) % 8)))
-
-// seek at the start of the bitmap
-// then seek to the byte that contains the bit
-#define SEEK_BITMAP(bm_start_addr, bit) \
-fseek(FS->file, (bm_start_addr), SEEK_SET); \
-fseek(FS->file, (bit) / 8, SEEK_CUR); \
+#define CAN_ADD_ENTRY_TO_DIR(dir, entry_name) ((dir)->file_type == FILE_TYPE_DIRECTORY && !dir_has_entry((dir)->id, (entry_name)))
 
 #define SEEK_INODE(inode_id) fseek(FS->file, FS->sb->inode_start_addr, SEEK_SET); \
 fseek(FS->file, ((inode_id) - 1) * FS->sb->inode_size, SEEK_CUR);
-
 
 #define DIRECT0_SIZE (uint64_t) (CLUSTER_SIZE)
 #define DIRECT1_SIZE ((CLUSTER_SIZE / 4) * DIRECT0_SIZE)
@@ -45,15 +34,6 @@ if ((*(prev_size)) > (max_write_size)) {\
 (*(prev_size)) -= (max_write_size);\
 return 0;\
 }
-
-/*#define READ_BYTES(start_addr, end_addr, arr) fseek(FS->file, (start_addr), SEEK_SET); \
-fread((arr), sizeof(uint8_t), (end_arr) - (start_addr), FS->file);
-*/
-// the union data_size can be either 1, 2, or 4 bytes long
-/*#define VALIDATE_SIZE(size) if (!((size) == 1 || (size) == 2 || (size) == 4)) return 1;
-
-#define malloc0(size) calloc(1, (size))
-*/
 
 /**
  * Creates a directory
@@ -259,32 +239,6 @@ static struct entry* get_dir_entries_(const struct inode* dir, uint32_t* amount)
     return entries;
 }
 
-static bool dir_has_entry_(const struct inode* dir, const char name[MAX_FILENAME_LENGTH]) {
-    struct entry* entries = NULL;
-    uint32_t count = 0;
-    uint32_t i = 0;
-
-    if (!dir) {
-        return false;
-    }
-    entries = get_dir_entries_(dir, &count);
-    if (!entries) {
-        return false;
-    }
-    for (i = 0; i < count; ++i) {
-        if (entries[i].inode_id == FREE_INODE) {
-            fprintf(stderr, "A null entry encountered, RIP\n");
-            exit(1);
-        }
-        if (strncmp(name, entries[i].item_name, MAX_FILENAME_LENGTH) == 0) {
-            FREE(entries);
-            return true;
-        }
-    }
-    FREE(entries);
-    return false;
-}
-
 static uint32_t read_recursive(uint32_t cluster, uint8_t* byte_arr, uint32_t size, uint32_t* curr_read, uint8_t rank) {
     uint32_t i = 0;
     uint32_t buf[CLUSTER_SIZE / 4] = {0};
@@ -425,10 +379,10 @@ static bool remove_entry_(struct inode* dir, const char name[MAX_FILENAME_LENGTH
         fprintf(stderr, "Cannot delete the '%s' entry!\n", name);
         return false;
     }
-    if (!dir_has_entry_(dir, name)) {
+    if (!dir_has_entry(dir->id, name)) {
         return false;
     }
-    if (!(entries = get_dir_entries_(dir, &amount))) {
+    if (!(entries = get_dir_entries(dir->id, &amount))) {
         return false;
     }
 

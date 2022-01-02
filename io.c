@@ -56,6 +56,7 @@ bool set_bit(uint32_t bm_start_addr, uint32_t bit, bool set_to_one) {
     SEEK_BITMAP(bm_start_addr, bit)
     fwrite(&byte, sizeof(uint8_t), 1, FS->file);
     fflush(FS->file);
+    write_superblock();
     return prev_val != byte ? 1 : 0;
 }
 
@@ -139,6 +140,7 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
                 fprintf(stderr, "Ran out of clusters!\n");
                 exit(1);
             }
+            write_superblock();
             offset = 0;
             // increment the ID by one because we will get the position of the cluster ID,
             // which is indexed from 0, but we index from 1
@@ -182,6 +184,7 @@ bool free_cluster(uint32_t cluster_id) {
     }
     if (set_bit(FS->sb->data_bm_start_addr, cluster_id - 1, false)) {
         FS->sb->free_cluster_count++;
+        write_superblock();
     }
     SEEK_CLUSTER(TO_DATA_CLUSTER(cluster_id))
     fwrite(buf, sizeof(buf), 1, FS->file);
@@ -213,4 +216,10 @@ bool find_free_spots(uint32_t bm_start_addr, uint32_t bm_end_addr, uint32_t* arr
     end:
     free(data);
     return found;
+}
+
+void write_superblock(){
+    fseek(FS->file, 0, SEEK_SET);
+    fwrite(FS->sb, sizeof(struct superblock), 1, FS->file);
+    fflush(FS->file);
 }

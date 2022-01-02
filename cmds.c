@@ -227,7 +227,7 @@ typedef struct NODE {
     struct entry entry;
 } node;
 
-int pwd(char* empt[]) {
+int pwd(char* empty[]) {
     node* n;
     node* prev;
     node* copy;
@@ -465,4 +465,25 @@ int short_cmd(char* s[]) {
     end:
     FREE(inode);
     return success ? OK : ERR_UNKNOWN;
+}
+
+int print_sb(char* empty[]) {
+    struct superblock* sb = FS->sb;
+    printf("%-25s: %luB\n", "Inode size", sizeof(struct inode));
+    printf("%-25s: %luB\n", "Superblock size", sizeof(struct superblock));
+    printf("%-25s: %luB\n", "entry size", sizeof(struct entry));
+    printf("%-25s: %luB\n", "FS (struct) size", sizeof(struct fs));
+    printf("%-25s: %s\n", "filename", FS->filename);
+    printf("%-25s: %u\n", "inode_count", sb->inode_count);
+    printf("%-25s: %u\n", "free_inode_count", sb->free_inode_count);
+    printf("%-25s: %u\n", "free_cluster_count", sb->free_cluster_count);
+    printf("%-25s: %uKiB\n", "cluster_size", sb->cluster_size / 1024);
+    printf("%-25s: %uB\n", "inode_size", sb->inode_size);
+    printf("%-25s: %u\n", "cluster_count", sb->cluster_count);
+    printf("%-25s: %u\n", "free_cluster_count", sb->free_cluster_count);
+    printf("%-25s: %uMiB\n", "disk_size", (sb->disk_size / 1024) / 1024);
+    printf("%-25s: %uMiB\n", "free disk size",
+           (sb->disk_size - ((sb->cluster_count - sb->free_cluster_count) * sb->cluster_size)) / 1024 / 1024);
+    printf("%-25s: %luGiB\n", "max filesize", MAX_FS / 1024 / 1024 / 1024);
+    return CUSTOM_OUTPUT;
 }

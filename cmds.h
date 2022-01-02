@@ -62,10 +62,10 @@ int cd(char* a[]);
 
 /**
  * 'Vypíše aktuální cestu'
- * @param empt
+ * @param empty
  * @return
  */
-int pwd(char* empt[]);
+int pwd(char* empty[]);
 
 /**
  * 'Vypíše informace o souboru/adresáři s1/a1 (v jakých clusterech se nachází)'
@@ -116,5 +116,12 @@ int xcp(char* s[]);
  * @return
  */
 int short_cmd(char* s[]);
+
+/**
+ * Prints the superblock state
+ * @param empty
+ * @return
+ */
+int print_sb(char* empty[]);
 
 #endif

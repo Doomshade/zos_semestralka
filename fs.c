@@ -237,6 +237,7 @@ static struct inode* inode_create() {
         fprintf(stderr, "Could not write an inode with ID %u to the disk!\n", inode->id);
         return NULL;
     }
+    write_superblock();
     return inode;
 }
 

@@ -17,7 +17,7 @@ bool find_free_spots(uint32_t bm_start_addr, uint32_t bm_end_addr, uint32_t* arr
 /**
  * Checks whether a file with some name exists
  * @param filename the file name
- * @return 0
+ * @return true if it does, false otherwise
  */
 bool fexists(const char* filename);
 
@@ -25,7 +25,7 @@ bool fexists(const char* filename);
  * Checks whether a bit is set in the bitmap
  * @param bm_start_addr the start address of the bitmap
  * @param bit the bit
- * @return 0 if not, 1 if yes
+ * @return false if not, true if yes
  */
 bool is_set_bit(uint32_t bm_start_addr, uint32_t bit);
 
@@ -34,7 +34,7 @@ bool is_set_bit(uint32_t bm_start_addr, uint32_t bit);
  * @param bm_start_addr the bitmap start address
  * @param bit the bit #
  * @param set_to_one whether to set the bit to 1
- * @return 1 if the bit was set, 0 if not
+ * @return true if the bit was set, false if not
  */
 bool set_bit(uint32_t bm_start_addr, uint32_t bit, bool set_to_one);
 
@@ -44,19 +44,30 @@ bool set_bit(uint32_t bm_start_addr, uint32_t bit, bool set_to_one);
  * @param read_amount the amount to read limited to sb->cluster_size
  * @param byte_arr the array to read to
  * @param offset the offset in cluster
- * @return the amount actually read
+ * @return the amount read
  */
 uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr, uint32_t offset);
 
 /**
  * Reads an inode with the given ID
  * @param inode the inode ID
- * @return
+ * @return the byte array
  */
 uint8_t* read_inode(uint32_t inode);
 
+/**
+ * Writes raw data to the inode with the given ID
+ * @param inode_id the inode ID
+ * @param inode the inode data
+ * @return true if it was written correctly, false otherwise
+ */
 bool write_inode(uint32_t inode_id, uint8_t* inode);
 
+/**
+ * Frees an inode in the bitmap
+ * @param inode_id the inode ID
+ * @return true if it was freed, false otherwise
+ */
 bool free_inode(uint32_t inode_id);
 
 /**
@@ -82,6 +93,15 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
  */
 bool free_cluster(uint32_t cluster_id);
 
+/**
+ * Reads the first cluster (the superblock)
+ * @return the superblock data
+ */
 uint8_t* read_superblock();
+
+/**
+ * Writes the superblock to the file
+ */
+void write_superblock();
 
 #endif //ZOS_SEMESTRALKA_IO_H

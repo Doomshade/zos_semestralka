@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define CMD_COUNT 16
+#define CMD_COUNT 17
 
 typedef int handle(char* args[]);
 
@@ -69,6 +69,8 @@ void register_handlers() {
                  "Pokud soubor neexistoval, bude vytvořen.", idx++); // DONE
     register_cmd(xcp, "xcp", 3, "Vytvoří soubor s3, který bude spojením souborů s1 a s2.", idx++); // DONE
     register_cmd(short_cmd, "short", 1, "Pokud je s1 větší než 5000 bytů, zkrátí jej na 5000 bytů", idx++); // DONE
+
+    register_cmd(print_sb, "printsb", 0, "Vypíše stav superblocku", idx++);
 }
 
 int handle_cmd(char* cmd, int argc, char* argv[]) {

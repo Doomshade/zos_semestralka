@@ -49,6 +49,17 @@ bool set_bit(uint32_t bm_start_addr, uint32_t bit, bool set_to_one);
 uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr, uint32_t offset);
 
 /**
+ * Reads an inode with the given ID
+ * @param inode the inode ID
+ * @return
+ */
+uint8_t* read_inode(uint32_t inode);
+
+bool write_inode(uint32_t inode_id, uint8_t* inode);
+
+bool free_inode(uint32_t inode_id);
+
+/**
  * Writes data to a cluster
  * @param cluster the cluster #, if 0 is passed a new cluster will be seeked
  * @param ptr the pointer to the data

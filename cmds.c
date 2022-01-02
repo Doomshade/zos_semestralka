@@ -8,10 +8,8 @@
 
 #define PARSE_PATHS(arr, amount) \
 uint32_t i;\
-struct entry child[amount];\
-struct entry parent[amount];     \
-memset(parent, 0, sizeof(struct entry) * (amount));                                 \
-memset(child, 0, sizeof(struct entry) * (amount));                                 \
+struct entry child[amount] = {0};\
+struct entry parent[amount] = {0};     \
 for(i = 0; i < (amount); ++i){     \
 parse_dir((arr)[i], &parent[i], &child[i]);\
 }
@@ -407,10 +405,10 @@ int load(char* s[]) {
 #define XCP_ARGC 3
 
 int xcp(char* s[]) {
-    struct entry dir[XCP_ARGC];
-    struct entry file[XCP_ARGC];
-    uint8_t* contents[XCP_ARGC];
-    uint32_t size[XCP_ARGC];
+    struct entry dir[XCP_ARGC] = {0};
+    struct entry file[XCP_ARGC] = {0};
+    uint8_t* contents[XCP_ARGC] = {0};
+    uint32_t size[XCP_ARGC] = {0};
     uint32_t i;
     uint32_t inode;
     bool success = false;
@@ -456,6 +454,7 @@ int short_cmd(char* s[]) {
     if (!inode) {
         return ERR_FILE_NOT_FOUND;
     }
+
     if (inode->file_size <= SHORT_SIZE) {
         goto end;
     }

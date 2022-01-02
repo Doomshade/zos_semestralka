@@ -72,6 +72,45 @@ uint8_t* read_superblock() {
     return arr;
 }
 
+uint8_t* read_inode(uint32_t inode_id) {
+    uint8_t* inode;
+    if (inode_id == FREE_INODE || inode_id > FS->sb->inode_count ||
+        !is_set_bit(FS->sb->inode_bm_start_addr, inode_id - 1)) {
+        fprintf(stderr, "No inode with id %u exists!\n", inode_id);
+        return NULL;
+    }
+
+    inode = malloc(sizeof(struct inode));
+    if (!inode) {
+        return NULL;
+    }
+    SEEK_INODE(inode_id)
+    fread(inode, FS->sb->inode_size, 1, FS->file);
+    return inode;
+}
+
+
+bool write_inode(uint32_t inode_id, uint8_t* inode) {
+    if (!inode || inode_id == FREE_INODE) {
+        return false;
+    }
+    SEEK_INODE(inode_id)
+    fwrite(inode, FS->sb->inode_size, 1, FS->file);
+    fflush(FS->file);
+    return true;
+}
+
+bool free_inode(uint32_t inode_id) {
+    if (inode_id == FREE_INODE){
+        return false;
+    }
+    if (set_bit(FS->sb->inode_bm_start_addr, inode_id - 1, false)) {
+        FS->sb->free_inode_count++;
+    }
+
+    return true;
+}
+
 uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr, uint32_t offset) {
     if (cluster == 0) {
         return 0;
@@ -80,16 +119,6 @@ uint32_t read_cluster(uint32_t cluster, uint32_t read_amount, uint8_t* byte_arr,
     SEEK_CLUSTER(cluster)
     fseek(FS->file, offset, SEEK_CUR);
     return fread(byte_arr, sizeof(uint8_t), read_amount, FS->file);
-}
-
-bool free_cluster(uint32_t cluster_id) {
-    if (cluster_id == FREE_CLUSTER) {
-        return false;
-    }
-    if (set_bit(FS->sb->data_bm_start_addr, TO_DATA_CLUSTER(cluster_id), false)) {
-        FS->sb->free_cluster_count++;
-    }
-    return true;
 }
 
 uint32_t
@@ -146,11 +175,25 @@ write_cluster(uint32_t cluster_id, void* ptr, uint32_t size, uint32_t offset, bo
     return cluster_id;
 }
 
+bool free_cluster(uint32_t cluster_id) {
+    uint8_t buf[CLUSTER_SIZE] = {0};
+    if (cluster_id == FREE_CLUSTER) {
+        return false;
+    }
+    if (set_bit(FS->sb->data_bm_start_addr, cluster_id - 1, false)) {
+        FS->sb->free_cluster_count++;
+    }
+    SEEK_CLUSTER(TO_DATA_CLUSTER(cluster_id))
+    fwrite(buf, sizeof(buf), 1, FS->file);
+    return true;
+}
+
 bool find_free_spots(uint32_t bm_start_addr, uint32_t bm_end_addr, uint32_t* arr) {
     uint8_t* data;
     uint32_t i;
     uint32_t len;
     uint8_t j;
+    bool found = false;
 
     len = bm_end_addr - bm_start_addr;
     data = malloc(len * sizeof(uint8_t));
@@ -162,11 +205,12 @@ bool find_free_spots(uint32_t bm_start_addr, uint32_t bm_end_addr, uint32_t* arr
         for (j = 0; j < 8; ++j, data[i] <<= 1) {
             if (!(data[i])) {
                 *arr = i * 8 + j;
-                free(data);
-                return true;
+                found = true;
+                goto end;
             }
         }
     }
+    end:
     free(data);
-    return false;
+    return found;
 }

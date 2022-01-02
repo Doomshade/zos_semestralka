@@ -295,9 +295,11 @@ void parse_dir(const char* dir, struct entry* prev_dir, struct entry* cur_dir) {
         strncpy(curr_dir.item_name, tok, MAX_FILENAME_LENGTH);
         *cur_dir = (struct entry) curr_dir;
         tok = strtok(NULL, DIR_SEPARATOR);
+
         // we haven't gotten to the end of the directory search,
         // this means the directory does not exist
         if (tok != NULL && curr_dir.inode_id == FREE_INODE) {
+            *prev_dir = (struct entry) EMPTY;
             *cur_dir = (struct entry) EMPTY;
             break;
         }

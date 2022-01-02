@@ -117,10 +117,14 @@ static bool load_fs_from_file() {
     FILE* f;
     uint8_t* arr;
     VALIDATE(load_file(f = fopen(FS->filename, "rb+")))
+
+    // read the superblock and set the ptr to that
     arr = read_superblock();
     sb = malloc(sizeof(struct superblock));
     VALIDATE_MALLOC(sb)
     memcpy(sb, arr, sizeof(struct superblock));
+
+    // the inode ID of root will always be 1
     FS->root = 1;
     FS->curr_dir = FS->root;
     FS->sb = sb;
@@ -148,23 +152,29 @@ static bool init_superblock(uint32_t disk_size, struct superblock** _sb) {
     }
     ALIGN_DOWN(sb->disk_size, sb->cluster_size)
 
+    // set the defaults first
     strcpy(sb->signature, SIGNATURE);
     sb->inode_size = sizeof(struct inode);
     sb->cluster_count = sb->disk_size / sb->cluster_size;
     sb->inode_count = (uint32_t) (sb->cluster_count * INODE_PER_CLUSTER);
-    ALIGN_UP(sb->inode_count, sb->cluster_size / sb->inode_size) // align to a cluster
+
+    // align to a cluster and set the free inode count
+    ALIGN_UP(sb->inode_count, sb->cluster_size / sb->inode_size)
     sb->free_inode_count = sb->inode_count;
 
-    inode_bm_size = ALIGNED_UP(sb->inode_count / 8, sb->cluster_size); // the inode bitmap size in bytes
-    inode_block_size = sb->inode_count * sb->inode_size;                     // the inode block size in bytes
+    // the inode and block bitmap size in bytes
+    inode_bm_size = ALIGNED_UP(sb->inode_count / 8, sb->cluster_size);
+    inode_block_size = sb->inode_count * sb->inode_size;
     data_bm_size = ALIGNED_UP(ALIGNED_UP(sb->cluster_count, 8) / 8, sb->cluster_size);
 
+    // mark the first clusters as used
     used_clusters = 1; // superblock
     used_clusters += inode_bm_size / sb->cluster_size;
     used_clusters += inode_block_size / sb->cluster_size;
     used_clusters += data_bm_size / sb->cluster_size;
     sb->free_cluster_count = sb->cluster_count - used_clusters;
 
+    // set the start addresses
     sb->data_bm_start_addr = sb->cluster_size;
     sb->inode_bm_start_addr = sb->data_bm_start_addr + data_bm_size;
     sb->inode_start_addr = sb->inode_bm_start_addr + inode_bm_size;
@@ -175,13 +185,13 @@ static bool init_superblock(uint32_t disk_size, struct superblock** _sb) {
 }
 
 static bool write_fs_header() {
-
-    // write the superblock
+    // write the superblock to the cluster #0
     write_cluster(0, FS->sb, sizeof(struct superblock), 0, false, true);
-    return 0;
+    return true;
 }
 
 static bool inode_free(struct inode* inode) {
+    // free the clusters before freeing the inode
     free_clusters(inode);
     return free_inode(inode->id);
 }
@@ -196,6 +206,7 @@ static struct inode* inode_create() {
         fprintf(stderr, "Ran out of inode space!\n");
         return 0;
     }
+    // set the defaults of an inode
     memset(inode, 0, sizeof(struct inode));
     inode->id = inode_id + 1;
     inode->file_size = 0;
@@ -203,15 +214,19 @@ static struct inode* inode_create() {
     inode->hard_links = 0;
     memset(inode->direct, 0, sizeof(inode->direct));
     memset(inode->indirect, 0, sizeof(inode->indirect));
+
+    // flip a bit in the inode bitmap
     if (set_bit(FS->sb->inode_bm_start_addr, inode_id, true)) {
         FS->sb->free_inode_count--;
     } else {
         fprintf(stderr, "Created an inode with an ID that already exists!\n");
-        return 0;
+        return NULL;
     }
+
+    // write the inode
     if (!inode_write(inode)) {
         fprintf(stderr, "Could not write an inode with ID %u to the disk!\n", inode->id);
-        return 0;
+        return NULL;
     }
     return inode;
 }
@@ -229,15 +244,17 @@ static struct entry* get_dir_entries_(const struct inode* dir, uint32_t* amount)
     struct entry* entries = NULL;
 
     if (!dir) {
-        return 0;
+        return NULL;
     }
 
-    remaining_bytes = dir->file_size;
-    read = malloc(remaining_bytes * sizeof(uint8_t));
+    // read the entries into an array
+    read = malloc(dir->file_size * sizeof(uint8_t));
     VALIDATE_MALLOC(read)
     entries = malloc(dir->file_size);
     VALIDATE_MALLOC(entries)
 
+    // read the dir entries
+    remaining_bytes = dir->file_size;
     index = 0;
     while (remaining_bytes) {
         for (i = 0; i < 5 && remaining_bytes; ++i) {
@@ -250,7 +267,6 @@ static struct entry* get_dir_entries_(const struct inode* dir, uint32_t* amount)
         }
     }
     FREE(read);
-
     *amount = dir->file_size / sizeof(struct entry);
     return entries;
 }
@@ -261,15 +277,19 @@ static uint32_t read_recursive(uint32_t cluster, uint8_t* byte_arr, uint32_t siz
     uint32_t read = 0;
     uint32_t total_read = 0;
 
+    // check for the cluster and size
     if (cluster == 0 || !byte_arr || rank > MAX_INDIRECT_RANK || size == 0) {
         return 0;
     }
+
+    // if the rank is 0 we read from the cluster
     if (rank == 0) {
         read = read_cluster(cluster, MIN(CLUSTER_SIZE, size), (byte_arr + *curr_read), 0);
         *curr_read += read;
         return read;
     }
 
+    // otherwise it's an indirect cluster, and we read 4 bytes each and call this function again with a rank - 1
     read_cluster(cluster, sizeof(buf), (uint8_t*) buf, 0);
     read = 0;
     total_read = 0;
@@ -288,12 +308,16 @@ static uint32_t read_data(struct inode* inode, uint8_t* byte_arr) {
 
     size = inode->file_size;
 
+    // first read the directs (rank = 0)
     for (i = 0; i < DIRECT_AMOUNT && size; ++i) {
         size -= read_recursive(inode->direct[i], byte_arr, size, &curr_read, 0);
     }
+
+    // then the indirects (rank = 1, 2)
     for (i = 0; i < INDIRECT_AMOUNT && size; ++i) {
         size -= read_recursive(inode->indirect[i], byte_arr, size, &curr_read, i + 1);
     }
+    // if the size is 0, the read was correct
     return size == 0 ? inode->file_size : 0;
 }
 
@@ -624,7 +648,7 @@ int fs_format(uint32_t disk_size) {
     FS->sb = sb;
     VALIDATE(load_file(f = fopen(FS->filename, "wb+")))
     ftruncate(fileno(f), sb->disk_size); // sets the file to the size
-    VALIDATE(write_fs_header())
+    VALIDATE(!write_fs_header())
 
     root = create_empty_dir(NULL, ROOT_DIR, true);
 

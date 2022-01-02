@@ -14,10 +14,20 @@
 #define INVALID_ARG_AMOUNT 0x81
 #define FS_NOT_YET_FORMATTED 0x82
 
+/**
+ * Prints all commands
+ */
 void print_cmds();
 
+/**
+ * Prints a specific command
+ * @param cmd the command name
+ */
 void print_cmd(char* cmd);
 
+/**
+ * Registers the command handlers
+ */
 void register_handlers();
 
 /**

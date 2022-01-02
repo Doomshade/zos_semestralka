@@ -25,10 +25,14 @@
 #define DIR_SEPARATOR "/"
 
 /**
- * The file system global variable
+ * The file system global variable. The file system header is as follows:
+ * [superblock | data block bitmap | inode bitmap | inode table | data blocks]
  */
 extern struct fs* FS;
 
+/**
+ * The superblock -- the very first cluster containing info about the FS
+ */
 struct superblock {
     char signature[16];             // the author of this FS
     uint32_t inode_count;           // the total inode count
@@ -44,7 +48,9 @@ struct superblock {
     uint8_t inode_size;             // the size of an inode
 };
 
-
+/**
+ * The Inode -- the metadata of a file
+ */
 struct inode {
     uint32_t id;            // inode ID, ID = 0 = inode_create is free
     uint8_t file_type;      // file type (REGULAR_FILE, DIRECTORY)
@@ -55,7 +61,9 @@ struct inode {
     const uint32_t padding[6];    // padding to reach 64 bytes
 };
 
-
+/**
+ * An entry in a directory
+ */
 struct entry {
     uint32_t inode_id;
     char item_name[MAX_FILENAME_LENGTH];
@@ -77,14 +85,14 @@ struct fs {
 /**
  * Formats the disk with the given disk size
  * @param disk_size the disk size
- * @return
+ * @return 0 if everything went alright
  */
 int fs_format(uint32_t disk_size);
 
 /**
  * Loads or initializes the file system from the file with the given name
  * @param filename the file name
- * @return
+ * @return 0 if everything went alright
  */
 int init_fs(char* filename);
 
@@ -105,17 +113,17 @@ uint32_t create_dir(uint32_t parent_dir_inode_id, const char name[MAX_FILENAME_L
 uint32_t create_file(uint32_t dir_inode_id, const char name[MAX_FILENAME_LENGTH]);
 
 /**
- *
+ * Reads an inode from the FS with the given inode ID
  * @param inode_id the inode ID
- * @return the state of an inode on disk
+ * @return the inode
  */
 struct inode* inode_read(uint32_t inode_id);
 
 /**
  * Retrieves the entries in the directory
  * @param dir the dir inode
- * @param amount the entries array pointer
- * @return the amount of entries
+ * @param amount the pointer to the amount of entries
+ * @return the entries
  */
 struct entry* get_dir_entries(uint32_t dir, uint32_t* amount);
 
@@ -128,7 +136,7 @@ typedef bool entry_compare(const struct entry entry, const void* needle);
  * Removes a directory
  * @param parent the parent directory inode id
  * @param dir_name the directory name
- * @return
+ * @return true if the directory was removed, false otherwise
  */
 bool remove_dir(uint32_t parent, const char dir_name[MAX_FILENAME_LENGTH]);
 
@@ -137,7 +145,7 @@ bool remove_dir(uint32_t parent, const char dir_name[MAX_FILENAME_LENGTH]);
  * @param inode_id the inode id of the file
  * @param ptr the ptr to the data
  * @param size the size of the data
- * @return
+ * @return true if the contents were written, false otherwise
  */
 bool inode_write_contents(uint32_t inode_id, void* ptr, uint32_t size);
 
@@ -153,7 +161,7 @@ uint8_t* inode_get_contents(uint32_t inode_id, uint32_t* size);
  * Adds an entry to the parent directory
  * @param parent the parent directory inode ID
  * @param entry the entry
- * @return
+ * @return true if the entry was added, false otherwise
  */
 bool add_entry(uint32_t parent, struct entry entry);
 
@@ -162,7 +170,7 @@ bool add_entry(uint32_t parent, struct entry entry);
  * Removes an entry from the parent directory
  * @param parent the parent directory inode ID
  * @param entry_name the entry inode id
- * @return
+ * @return true if the entry was removed, false otherwise
  */
 bool remove_entry(uint32_t parent, const char entry_name[MAX_FILENAME_LENGTH]);
 

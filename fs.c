@@ -74,6 +74,14 @@ static bool load_file(FILE* f);
 static bool load_fs_from_file();
 
 /**
+ * Reads the data of an inode to a byte array
+ * @param inode
+ * @param byte_arr
+ * @return
+ */
+static uint32_t read_data(const struct inode* inode, uint8_t* byte_arr);
+
+/**
  * Initializes the superblock with the given disk size and
  * @param disk_size the disk size
  * @param _sb the superblock pointer
@@ -106,17 +114,18 @@ struct fs* FS = NULL;
 
 static bool load_file(FILE* f) {
     if (!f) {
-        return 1;
+        return false;
     }
     FS->file = f;
-    return 0;
+    return true;
 }
 
 static bool load_fs_from_file() {
     struct superblock* sb;
-    FILE* f;
     uint8_t* arr;
-    VALIDATE(load_file(f = fopen(FS->filename, "rb+")))
+
+    // open it for read and write as binary
+    VALIDATE(!load_file(fopen(FS->filename, "rb+")))
 
     // read the superblock and set the ptr to that
     arr = read_superblock();
@@ -235,42 +244,6 @@ static bool inode_write(struct inode* inode) {
     return write_inode(inode->id, (uint8_t*) inode);
 }
 
-static struct entry* get_dir_entries_(const struct inode* dir, uint32_t* amount) {
-    uint32_t remaining_bytes = 0;
-    uint32_t i = 0, j = 0;
-    uint32_t max_read = 0;
-    uint8_t* read = 0;
-    uint32_t index = 0;
-    struct entry* entries = NULL;
-
-    if (!dir) {
-        return NULL;
-    }
-
-    // read the entries into an array
-    read = malloc(dir->file_size * sizeof(uint8_t));
-    VALIDATE_MALLOC(read)
-    entries = malloc(dir->file_size);
-    VALIDATE_MALLOC(entries)
-
-    // read the dir entries
-    remaining_bytes = dir->file_size;
-    index = 0;
-    while (remaining_bytes) {
-        for (i = 0; i < 5 && remaining_bytes; ++i) {
-            max_read = MIN(FS->sb->cluster_size, remaining_bytes);
-            read_cluster(dir->direct[i], max_read, read, 0);
-            for (j = 0; j < max_read / sizeof(struct entry); ++j) {
-                memcpy(&(entries[index++]), read + j * sizeof(struct entry), sizeof(struct entry));
-                remaining_bytes -= sizeof(struct entry);
-            }
-        }
-    }
-    FREE(read);
-    *amount = dir->file_size / sizeof(struct entry);
-    return entries;
-}
-
 static uint32_t read_recursive(uint32_t cluster, uint8_t* byte_arr, uint32_t size, uint32_t* curr_read, uint8_t rank) {
     uint32_t i = 0;
     uint32_t buf[CLUSTER_SIZE / sizeof(uint32_t)] = {0};
@@ -301,7 +274,7 @@ static uint32_t read_recursive(uint32_t cluster, uint8_t* byte_arr, uint32_t siz
     return total_read;
 }
 
-static uint32_t read_data(struct inode* inode, uint8_t* byte_arr) {
+static uint32_t read_data(const struct inode* inode, uint8_t* byte_arr) {
     uint32_t i = 0;
     uint32_t size = 0;
     uint32_t curr_read = 0;
@@ -637,7 +610,6 @@ int init_fs(char* filename) {
 }
 
 int fs_format(uint32_t disk_size) {
-    FILE* f;
     struct superblock* sb;
     struct inode* root;
 
@@ -646,8 +618,10 @@ int fs_format(uint32_t disk_size) {
     FS->curr_dir = FREE_INODE;
     VALIDATE(!init_superblock(disk_size, &sb))
     FS->sb = sb;
-    VALIDATE(load_file(f = fopen(FS->filename, "wb+")))
-    ftruncate(fileno(f), sb->disk_size); // sets the file to the size
+
+    // create a new file and add rw as binary
+    VALIDATE(!load_file(fopen(FS->filename, "wb+")))
+    ftruncate(fileno(FS->file), sb->disk_size); // sets the file to the size
     VALIDATE(!write_fs_header())
 
     root = create_empty_dir(NULL, ROOT_DIR, true);
@@ -690,20 +664,8 @@ uint8_t* inode_get_contents(uint32_t inode_id, uint32_t* size) {
 }
 
 struct entry* get_dir_entries(uint32_t dir, uint32_t* amount) {
-    struct inode* dirr = NULL;
-    struct entry* entries = NULL;
-
-    if (!amount) {
-        return NULL;
-    }
-
-    dirr = inode_read(dir);
-    if (!dirr) {
-        return NULL;
-    }
-
-    entries = get_dir_entries_(dirr, amount);
-    FREE(dirr);
+    struct entry* entries = (struct entry*) inode_get_contents(dir, amount);
+    *amount /= sizeof(struct entry);
     return entries;
 }
 
